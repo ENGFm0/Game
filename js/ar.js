@@ -1,149 +1,115 @@
 /* ═══════════════════════════════════════════════════════════
-   HuntAR — WebAR engine wrapper (MindAR.js + A-Frame)
-   Libraries are loaded lazily on first camera start so the
-   dashboard stays light until the player opts in.
+   HuntAR — image recognition (MindAR image tracking, vanilla).
+   • compile(): turns the puzzle pieces into recognition targets
+     right in the browser (admin does this once).
+   • start(): opens the rear camera and reports which piece is
+     in view.
    ═══════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
-  const AFRAME_SRC = 'https://cdn.jsdelivr.net/npm/aframe@1.4.2/dist/aframe.min.js';
-  const MINDAR_SRC = 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js';
+  const CFG = window.APP_CONFIG;
+  let lib = null, controller = null, stream = null, video = null, running = false, frame = null, raf = 0;
+  const visible = new Set();
 
-  let cfg, els, on = {}, scene = null, libsReady = null, running = false, simTimer = null;
+  async function load() {
+    // dynamic import() resolves relative to this script, so anchor the path to the page
+    if (!lib) lib = await import(new URL(CFG.mindarUrl, document.baseURI).href);
+    return lib;
+  }
 
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      if (document.querySelector(`script[src="${src}"]`)) return resolve();
-      const s = document.createElement('script');
-      s.src = src; s.async = true; s.onload = resolve; s.onerror = () => reject(new Error('فشل تحميل ' + src));
-      document.head.appendChild(s);
+  /** Compiles piece images (data URLs) → Uint8Array of recognition data. */
+  async function compile(dataURLs, onProgress) {
+    const { Compiler } = await load();
+    const images = await Promise.all(dataURLs.map(Puzzle.load));
+    const compiler = new Compiler();
+    await compiler.compileImageTargets(images, (p) => onProgress && onProgress(p));
+    const out = compiler.exportData();
+    // exportData returns a view over a shared buffer — copy it before storing.
+    return new Uint8Array(out).slice();
+  }
+
+  /* base64 helpers for storing the compiled data */
+  function toBase64(u8) {
+    return new Promise((res) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(',')[1]);
+      fr.readAsDataURL(new Blob([u8]));
     });
   }
-
-  function loadLibs() {
-    if (!libsReady) libsReady = loadScript(AFRAME_SRC).then(() => loadScript(MINDAR_SRC));
-    return libsReady;
+  async function fromBase64(b64) {
+    const r = await fetch('data:application/octet-stream;base64,' + b64);
+    return r.arrayBuffer();
   }
 
-  function setStatus(text, level) {
-    const dot = { live: '', idle: 'dot--idle', warn: 'dot--warn' }[level || 'idle'];
-    els.status.innerHTML = `<span class="dot ${dot}"></span> ${text}`;
-    on.status && on.status(text, level);
-  }
+  const supported = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 
-  function init(options) {
-    cfg = options.config; els = options.els; on = options;
-    els.permission.hidden = true;
-    setStatus('WebAR Idle', 'idle');
-  }
-
-  /** Shows the in-page permission sheet; resolves true when the player allows. */
-  function askPermission() {
-    return new Promise((resolve) => {
-      els.permission.hidden = false;
-      const done = (ok) => { els.permission.hidden = true; els.allow.onclick = els.deny.onclick = null; resolve(ok); };
-      els.allow.onclick = () => done(true);
-      els.deny.onclick = () => done(false);
-    });
-  }
-
-  /** Builds the golden sword as A-Frame primitives (no external model required). */
-  function swordEntity() {
-    return `
-      <a-entity id="arSword" position="0 0 0.15" rotation="0 0 -30" scale="0.35 0.35 0.35"
-                animation="property: rotation; to: 0 360 -30; loop: true; dur: 6000; easing: linear"
-                animation__float="property: position; from: 0 -0.05 0.15; to: 0 0.1 0.15; dir: alternate; loop: true; dur: 1600; easing: easeInOutSine">
-        <a-box position="0 0.55 0" width="0.12" height="1.1" depth="0.03" color="#f0d77a" metalness="0.8" roughness="0.25"></a-box>
-        <a-cone position="0 1.16 0" radius-bottom="0.06" radius-top="0" height="0.2" color="#fff1b8" metalness="0.9" roughness="0.2"></a-cone>
-        <a-box position="0 0 0" width="0.45" height="0.08" depth="0.08" color="#d4af37" metalness="0.9" roughness="0.3"></a-box>
-        <a-cylinder position="0 -0.2 0" radius="0.045" height="0.35" color="#7a5a12"></a-cylinder>
-        <a-sphere position="0 -0.42 0" radius="0.07" color="#d4af37" metalness="0.9"></a-sphere>
-        <a-light type="point" intensity="0.8" color="#ffe9a8" position="0 0.6 0.4"></a-light>
-      </a-entity>`;
-  }
-
-  async function start() {
+  /**
+   * Starts scanning. onFound(index) fires once each time a piece enters view.
+   * Throws with an Arabic message on failure.
+   */
+  async function start({ video: v, buffer, onFound, onLost, onStatus }) {
     if (running) return;
-    setStatus('Loading WebAR…', 'warn');
+    const status = (t) => onStatus && onStatus(t);
+    if (!supported()) throw new Error('المتصفح لا يدعم الكاميرا. استخدم Chrome أو Safari عبر HTTPS.');
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setStatus('الكاميرا غير مدعومة', 'warn');
-      on.error && on.error('المتصفح لا يدعم الوصول إلى الكاميرا. استخدم Chrome أو Safari الحديث عبر HTTPS.');
-      return false;
-    }
+    status('جارٍ تحميل محرك التعرف…');
+    const { Controller } = await load();
 
+    status('طلب إذن الكاميرا…');
     try {
-      await loadLibs();
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
     } catch (e) {
-      setStatus('WebAR load failed', 'warn');
-      on.error && on.error(e.message);
-      return false;
+      const denied = /NotAllowed|Permission/i.test(e && e.name);
+      throw new Error(denied ? 'تم رفض إذن الكاميرا — فعّله من إعدادات المتصفح ثم أعد المحاولة' : 'تعذر فتح الكاميرا: ' + (e.message || e.name));
     }
 
-    els.scene.innerHTML = `
-      <a-scene mindar-image="imageTargetSrc: ${cfg.ar.targetSrc}; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
-               color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights"
-               vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false" embedded>
-        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        <a-entity mindar-image-target="targetIndex: 0">${swordEntity()}</a-entity>
-      </a-scene>`;
-    scene = els.scene.querySelector('a-scene');
+    video = v;
+    v.srcObject = stream; v.muted = true; v.setAttribute('playsinline', ''); v.setAttribute('autoplay', '');
+    await new Promise((res) => { if (v.readyState >= 1) res(); else v.onloadedmetadata = () => res(); });
+    await v.play();
 
-    scene.addEventListener('targetFound', () => {
-      els.box.classList.add('is-found');
-      setStatus('Target locked — ' + cfg.ar.targetLabel, 'live');
-      on.found && on.found();
-    });
-    scene.addEventListener('targetLost', () => {
-      els.box.classList.remove('is-found');
-      setStatus('WebAR Active - MindAR.js Engine Running', 'live');
-    });
+    // Frames are copied to a canvas and the canvas is analysed: uploading the
+    // <video> element directly to the GPU is unreliable on some browsers.
+    frame = document.createElement('canvas');
+    frame.width = v.videoWidth; frame.height = v.videoHeight;
+    const fctx = frame.getContext('2d', { willReadFrequently: true });
+    const pump = () => { if (!frame) return; fctx.drawImage(v, 0, 0, frame.width, frame.height); raf = requestAnimationFrame(pump); };
+    pump();
 
-    const boot = () => new Promise((resolve, reject) => {
-      const sys = scene.systems['mindar-image-system'];
-      if (!sys) return reject(new Error('MindAR system missing'));
-      sys.start().then(resolve).catch(reject);
+    status('تحميل القطع…');
+    visible.clear();
+    controller = new Controller({
+      inputWidth: frame.width, inputHeight: frame.height,
+      maxTrack: 1, warmupTolerance: 5, missTolerance: 12,
+      onUpdate: (d) => {
+        if (d.type !== 'updateMatrix') return;
+        const i = d.targetIndex, on = !!d.worldMatrix;
+        if (on && !visible.has(i)) { visible.add(i); onFound && onFound(i); }
+        else if (!on && visible.has(i)) { visible.delete(i); onLost && onLost(i); }
+      },
     });
+    controller.addImageTargetsFromBuffer(buffer);
 
-    try {
-      if (scene.hasLoaded) await boot();
-      else await new Promise((resolve, reject) => scene.addEventListener('loaded', () => boot().then(resolve, reject), { once: true }));
-      running = true;
-      els.box.classList.add('is-live');
-      setStatus('WebAR Active - MindAR.js Engine Running', 'live');
-      return true;
-    } catch (e) {
-      stop();
-      const denied = /denied|permission|NotAllowed/i.test(String(e && (e.name || e.message)));
-      setStatus(denied ? 'Camera blocked' : 'WebAR error', 'warn');
-      on.error && on.error(denied ? 'تم رفض إذن الكاميرا. فعّل الإذن من إعدادات المتصفح ثم أعد المحاولة.' : 'تعذر تشغيل محرك الواقع المعزز: ' + (e.message || e));
-      return false;
-    }
+    status('تهيئة المعالج…');
+    await new Promise((r) => setTimeout(r, 30));
+    controller.dummyRun(frame);
+    controller.processVideo(frame);
+    running = true;
+    status('وجّه الكاميرا نحو إحدى القطع');
   }
 
   function stop() {
-    if (scene) {
-      try { const sys = scene.systems['mindar-image-system']; sys && sys.stop(); } catch (_) { /* ignore */ }
-      els.scene.innerHTML = '';
-      scene = null;
-    }
+    if (controller) { try { controller.stopProcessVideo(); controller.dispose(); } catch (_) { /* ignore */ } controller = null; }
+    cancelAnimationFrame(raf); frame = null;
+    if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+    if (video) { video.srcObject = null; video = null; }
+    visible.clear();
     running = false;
-    els.box.classList.remove('is-live', 'is-found');
-    setStatus('WebAR Idle', 'idle');
   }
 
-  /** Demo mode: plays the recognition animation without a camera. */
-  function simulate() {
-    clearTimeout(simTimer);
-    els.box.classList.remove('is-found');
-    setStatus('Scanning…', 'warn');
-    simTimer = setTimeout(() => {
-      els.box.classList.add('is-found');
-      setStatus('WebAR Active - MindAR.js Engine Running', 'live');
-      on.found && on.found({ simulated: true });
-      simTimer = setTimeout(() => { if (!running) { els.box.classList.remove('is-found'); setStatus('WebAR Idle', 'idle'); } }, 6000);
-    }, 1400);
-  }
-
-  window.HuntAR = { init, askPermission, start, stop, simulate, get running() { return running; } };
+  window.HuntAR = { compile, start, stop, toBase64, fromBase64, supported, get running() { return running; } };
 })();
