@@ -293,7 +293,7 @@ svg { width: 1.2em; height: 1.2em; flex: none; }
 .map__hint { position: absolute; bottom: 8px; inset-inline: 8px; z-index: 400; text-align: center; font-size: .74rem; padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,.85); color: var(--ink-2); pointer-events: none; }
 .leaflet-container { font-family: var(--font); }
 .map--offline { background: #e7ede9; background-image: linear-gradient(rgba(11,61,46,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(11,61,46,.12) 1px, transparent 1px); background-size: 40px 40px; }
-.map--offline::after { content: "الرياض · Riyadh"; position: absolute; inset-inline-end: 12px; bottom: 26px; z-index: 300; font-weight: 800; color: rgba(11,61,46,.35); font-size: 1.1rem; pointer-events: none; }
+.map--offline::after { content: "الرياض · Riyadh"; position: absolute; inset-inline-end: 12px; top: 44px; z-index: 300; font-weight: 800; color: rgba(11,61,46,.3); font-size: 1.1rem; pointer-events: none; }
 .pin { width: 34px; height: 34px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: grid; place-items: center; border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,.35); }
 .pin svg { transform: rotate(45deg); width: 18px; height: 18px; }
 .pin--unlocked { background: var(--green-600); color: var(--gold-300); }
