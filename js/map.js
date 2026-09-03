@@ -76,6 +76,17 @@
     tileLayer = makeTiles(token).addTo(map);
     const badge = document.getElementById('mapProvider');
     if (badge) badge.textContent = token ? 'Mapbox' : 'OpenStreetMap';
+    map.getContainer().classList.remove('map--offline');
+
+    // If tiles can't be fetched (offline, blocked network) keep the map usable:
+    // drop the tile layer and draw pins over a plain grid instead.
+    let failures = 0;
+    tileLayer.on('tileerror', () => {
+      if (++failures < 3 || !map.hasLayer(tileLayer)) return;
+      map.removeLayer(tileLayer);
+      map.getContainer().classList.add('map--offline');
+      if (badge) badge.textContent = 'Offline grid';
+    });
   }
 
   function statusIcon(stage) {

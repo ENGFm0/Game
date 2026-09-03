@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  const AFRAME_SRC = 'https://aframe.io/releases/1.4.2/aframe.min.js';
+  const AFRAME_SRC = 'https://cdn.jsdelivr.net/npm/aframe@1.4.2/dist/aframe.min.js';
   const MINDAR_SRC = 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js';
 
   let cfg, els, on = {}, scene = null, libsReady = null, running = false, simTimer = null;
