@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b3d2e">
+  <meta name="description" content="سيفين ونخله — منصة ويب لتحديات البحث عن الكنز بالواقع المعزز (WebAR) والموقع الجغرافي. العب مباشرة عبر المتصفح دون تحميل تطبيق.">
+  <title>سيفين ونخله — منصة الويب للتحديات</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b3d2e'/%3E%3Cpath d='M16 46 L46 16 M18 16 L48 46 M32 12 v40' stroke='%23d4af37' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- ───────── SVG icon sprite ───────── -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-portfolio" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="14" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 11l9-9M16 6l2 2M13 9l2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="10" r="2.5" fill="currentColor"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sword" viewBox="0 0 24 24"><path d="M4 20l3-3M7 17l10-10 3-3-1 4L9 19z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 15l4 4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-palm" viewBox="0 0 24 24"><path d="M12 22V10M12 10c-1-4-5-5-8-3 3 0 5 1 8 3zM12 10c1-4 5-5 8-3-3 0-5 1-8 3zM12 10c-4-1-7 1-8 4 3-2 5-3 8-4zM12 10c4-1 7 1 8 4-3-2-5-3-8-4zM12 10c0-4 2-6 4-7-2 2-3 4-4 7zM12 10c0-4-2-6-4-7 2 2 3 4 4 7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-coffee" viewBox="0 0 24 24"><path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM17 10h2a2 2 0 1 1 0 4h-2M8 4v2M11 3v3M14 4v2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-magnet" viewBox="0 0 24 24"><path d="M6 3v8a6 6 0 0 0 12 0V3M6 3h4v8a2 2 0 0 0 4 0V3h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 7h4M14 7h4" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><path d="M12 12l6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-gps" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-whatsapp" viewBox="0 0 24 24"><path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8.5c0 3 3 6 6.5 6.5l1-1.5-2-1-1 1a5 5 0 0 1-3-3l1-1-1-2z" fill="currentColor"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h13v3H5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="8" width="18" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16.5" cy="13.5" r="1.5" fill="currentColor"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4M12 14v4M8 21h8M9 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8.5" cy="10" r="1.5" fill="currentColor"/><path d="M21 16l-5-5-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-emblem" viewBox="0 0 64 64"><path d="M14 50L44 20M50 20L20 50" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="M12 48l6 4M52 48l-6 4M42 18l4-4M22 18l-4-4" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="M32 56V26M32 26c-3-8-9-10-14-8 6 1 10 4 14 8zM32 26c3-8 9-10 14-8-6 1-10 4-14 8zM32 26c-6-2-12 0-14 6 5-3 9-5 14-6zM32 26c6-2 12 0 14 6-5-3-9-5-14-6zM32 26c-1-7 2-11 6-13-3 3-5 7-6 13zM32 26c1-7-2-11-6-13 3 3 5 7 6 13z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+
+  <!-- ───────── Header ───────── -->
+  <header class="header">
+    <div class="header__brand">
+      <svg class="header__emblem"><use href="#i-emblem"/></svg>
+      <div>
+        <h1 class="header__title"><span class="gold">سيفين</span> <span>ونخله</span> <span class="header__sep">—</span> <span class="header__sub">منصة الويب للتحديات</span></h1>
+        <p class="header__tagline" id="tagline">ما تجمعه هو الهدية · العب مباشرة عبر المتصفح دون الحاجة لتحميل تطبيق</p>
+      </div>
+    </div>
+    <div class="header__meta">
+      <span class="chip chip--live"><span class="dot"></span> مباشر</span>
+      <span class="chip chip--ghost" id="publicUrlChip">hunt.sa/national-day</span>
+      <span class="chip chip--gold" id="headerPoints">75 نقطة</span>
+    </div>
+  </header>
+
+  <!-- ───────── Side nav ───────── -->
+  <nav class="nav" aria-label="التنقل الرئيسي">
+    <button class="nav__btn is-active" data-nav="home" title="الرئيسية"><svg><use href="#i-home"/></svg><span>الرئيسية</span></button>
+    <button class="nav__btn" data-nav="ar" title="المستخدم / الكاميرا"><svg><use href="#i-user"/></svg><span>اللاعب</span></button>
+    <button class="nav__btn" data-nav="map" title="الخريطة"><svg><use href="#i-map"/></svg><span>الخريطة</span></button>
+    <button class="nav__btn" data-nav="portfolio" title="المحفظة"><svg><use href="#i-portfolio"/></svg><span>المحفظة</span></button>
+    <button class="nav__btn" data-nav="settings" title="الإعدادات"><svg><use href="#i-settings"/></svg><span>الإعدادات</span></button>
+  </nav>
+
+  <!-- ───────── Main ───────── -->
+  <main class="main" id="main">
+
+    <!-- ── Column 1: WebAR + Hunt status ── -->
+    <section class="col" data-section="ar">
+      <div class="panel">
+        <div class="panel__bar"><svg><use href="#i-camera"/></svg><h2>منطقة اللعب المباشر بالمتصفح <small>WebAR Engine</small></h2></div>
+        <div class="panel__body">
+
+          <div class="ar" id="arBox">
+            <!-- permission prompt -->
+            <div class="ar__permission" id="arPermission">
+              <div class="perm">
+                <div class="perm__site"><svg><use href="#i-lock"/></svg> hunt.sa</div>
+                <p class="perm__text">يطلب الموقع الإذن لاستخدام الكاميرا والموقع الجغرافي (GPS)</p>
+                <div class="perm__row"><svg><use href="#i-camera"/></svg> الكاميرا — للتعرف على الأهداف بالواقع المعزز</div>
+                <div class="perm__row"><svg><use href="#i-gps"/></svg> الموقع الجغرافي — لفتح الدروب القريبة منك</div>
+                <div class="perm__actions">
+                  <button class="btn btn--ghost" id="arDeny">حظر</button>
+                  <button class="btn btn--gold" id="arAllow">السماح</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- simulated / live preview -->
+            <div class="ar__preview" id="arPreview">
+              <div class="ar__scene" id="arScene"></div>
+              <div class="ar__demo" id="arDemo" aria-hidden="true">
+                <div class="cup">
+                  <div class="cup__body"></div>
+                  <div class="cup__handle"></div>
+                  <div class="cup__steam"><i></i><i></i><i></i></div>
+                </div>
+                <div class="sword3d">
+                  <div class="sword3d__blade"></div>
+                  <div class="sword3d__guard"></div>
+                  <div class="sword3d__grip"></div>
+                </div>
+                <div class="ar__reticle"></div>
+                <div class="ar__tag">تم التعرف: كوب القهوة ☕</div>
+              </div>
+              <div class="ar__hud">
+                <span class="hud hud--status" id="arStatus"><span class="dot dot--idle"></span> WebAR Idle</span>
+                <span class="hud" id="arGps"><svg><use href="#i-gps"/></svg> GPS —</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ar__foot">
+            <button class="btn btn--green" id="arStart"><svg><use href="#i-camera"/></svg> تشغيل الكاميرا</button>
+            <button class="btn btn--ghost" id="arStop" hidden>إيقاف</button>
+            <button class="btn btn--outline" id="arSimulate">محاكاة التعرف</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel__bar"><svg><use href="#i-key"/></svg><h2>حالة التحدي <small>Scavenger Hunt Status</small></h2></div>
+        <div class="panel__body">
+          <p class="challenge-title" id="challengeTitle">تحدي اليوم الوطني السعودي</p>
+          <ol class="stages" id="stages"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Column 2: Map ── -->
+    <section class="col" data-section="map">
+      <div class="panel panel--map">
+        <div class="panel__bar"><svg><use href="#i-map"/></svg><h2>إدارة الخريطة والمواقع <small>Browser GPS Map</small></h2></div>
+        <div class="panel__body">
+          <div class="seg" role="tablist">
+            <button class="seg__btn is-active" data-mode="outdoor" role="tab">دروب خارجية (GPS)</button>
+            <button class="seg__btn" data-mode="indoor" role="tab">Indoor Image Markers</button>
+          </div>
+
+          <div class="map-wrap">
+            <div id="map" class="map" role="application" aria-label="خريطة الدروب في الرياض"></div>
+            <div class="map__badge" id="mapProvider">OpenStreetMap</div>
+            <div class="map__hint" id="mapHint">اضغط على الخريطة لإضافة دروب جديد · اضغط على الدبوس للتفاصيل</div>
+          </div>
+
+          <div class="indoor" id="indoorPanel" hidden>
+            <div class="indoor__grid" id="indoorGrid"></div>
+            <p class="muted small">الأهداف الداخلية تُفتح بتوجيه الكاميرا نحو الصورة المرجعية (MindAR image target).</p>
+          </div>
+
+          <div class="stats">
+            <div class="stat"><span class="stat__n" id="statDrops">3</span><span class="stat__l">دروب</span></div>
+            <div class="stat"><span class="stat__n" id="statUnlocked">1</span><span class="stat__l">مفتوحة</span></div>
+            <div class="stat"><span class="stat__n" id="statDistance">—</span><span class="stat__l">أقرب دروب</span></div>
+          </div>
+
+          <button class="btn btn--whatsapp btn--block" id="shareBtn"><svg><use href="#i-whatsapp"/></svg> توليد رابط التحدي لمشاركته عبر الواتساب</button>
+          <div class="share" id="shareBox" hidden>
+            <input class="share__input" id="shareInput" readonly dir="ltr">
+            <button class="btn btn--ghost btn--icon" id="copyBtn" title="نسخ"><svg><use href="#i-copy"/></svg></button>
+            <a class="btn btn--whatsapp btn--icon" id="waLink" target="_blank" rel="noopener" title="فتح واتساب"><svg><use href="#i-whatsapp"/></svg></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Column 3: Leaderboard + Portfolio + Store ── -->
+    <section class="col" data-section="portfolio">
+      <div class="panel">
+        <div class="panel__bar"><svg><use href="#i-trophy"/></svg><h2>لوحة نتائج المتصفح والجوائز <small>Live Web Dashboard</small></h2></div>
+        <div class="panel__body">
+          <div class="prize">
+            <div>
+              <div class="prize__label">إجمالي الجوائز</div>
+              <div class="prize__amount" id="prizeAmount">1,000 <small>SAR</small></div>
+            </div>
+            <button class="btn btn--gold" id="claimBtn"><svg><use href="#i-wallet"/></svg> استلام عبر المحفظة الرقمية</button>
+          </div>
+
+          <div class="lb__head"><span>اللاعبون النشطون</span><span class="chip chip--live small"><span class="dot"></span> تحديث لحظي</span></div>
+          <ol class="lb" id="leaderboard"></ol>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel__bar"><svg><use href="#i-portfolio"/></svg><h2>محفظتك <small>Your Portfolio</small></h2></div>
+        <div class="panel__body">
+          <div class="me">
+            <div class="avatar avatar--lg" id="meAvatar">ف</div>
+            <div class="me__info">
+              <div class="me__hello">أهلاً، <b id="meName">فواز</b></div>
+              <div class="me__pts"><b id="mePoints">75</b> نقطة · المركز <b id="meRank">#6</b></div>
+            </div>
+          </div>
+          <div class="collected">
+            <div class="collected__label"><span id="meItemsCount">2</span> قطع تم جمعها</div>
+            <div class="collected__items" id="meItems"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel__bar"><svg><use href="#i-magnet"/></svg><h2>المتجر <small>Store</small></h2></div>
+        <div class="panel__body">
+          <div class="store" id="store"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Settings (nav only) ── -->
+    <section class="col" data-section="settings" hidden>
+      <div class="panel">
+        <div class="panel__bar"><svg><use href="#i-settings"/></svg><h2>الإعدادات <small>Settings</small></h2></div>
+        <div class="panel__body settings">
+          <label class="field"><span>اسم اللاعب</span><input id="setName" type="text"></label>
+          <label class="field"><span>Mapbox Access Token (اختياري)</span><input id="setMapbox" type="text" dir="ltr" placeholder="pk.eyJ1..."></label>
+          <label class="field"><span>ملف الهدف (MindAR .mind)</span><input id="setTarget" type="text" dir="ltr"></label>
+          <label class="field field--row"><input id="setSound" type="checkbox" checked><span>أصوات التنبيه</span></label>
+          <div class="settings__actions">
+            <button class="btn btn--green" id="setSave">حفظ</button>
+            <button class="btn btn--ghost" id="setReset">إعادة ضبط التقدم</button>
+          </div>
+          <p class="muted small">يتم حفظ التقدم محلياً في المتصفح (localStorage). لمزامنة النتائج بين اللاعبين اربط المنصة بخادم خلفي.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- mobile bottom nav -->
+  <nav class="tabbar" aria-label="تنقل الجوال">
+    <button data-nav="home" class="is-active"><svg><use href="#i-home"/></svg>الرئيسية</button>
+    <button data-nav="ar"><svg><use href="#i-camera"/></svg>الكاميرا</button>
+    <button data-nav="map"><svg><use href="#i-map"/></svg>الخريطة</button>
+    <button data-nav="portfolio"><svg><use href="#i-trophy"/></svg>النتائج</button>
+    <button data-nav="settings"><svg><use href="#i-settings"/></svg>الإعدادات</button>
+  </nav>
+</div>
+
+<!-- ───────── Modal ───────── -->
+<div class="modal" id="modal" hidden>
+  <div class="modal__card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <button class="modal__close" id="modalClose" aria-label="إغلاق"><svg><use href="#i-close"/></svg></button>
+    <h3 id="modalTitle"></h3>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="config.js"></script>
+<script src="js/map.js"></script>
+<script src="js/ar.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
