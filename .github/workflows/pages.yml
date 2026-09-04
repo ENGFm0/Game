@@ -20,6 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Cache-bust every script/style so phones never mix an old app.js with a new index.html.
+      - name: Stamp asset URLs with the commit
+        run: |
+          V=${GITHUB_SHA::8}
+          sed -i "s#\"style.css\"#\"style.css?v=$V\"#; s#\"game-core.js\"#\"game-core.js?v=$V\"#; s#\"app.js\"#\"app.js?v=$V\"#" public/index.html
+          sed -i "s#'./net.js'#'./net.js?v=$V'#" public/app.js
+          grep -c "v=$V" public/index.html public/app.js
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
