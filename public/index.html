@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0f1115">
+  <title>Meccha — WebAR Hide &amp; Seek</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2322c55e'/%3E%3Ccircle cx='24' cy='28' r='6' fill='%230f1115'/%3E%3Ccircle cx='40' cy='28' r='6' fill='%230f1115'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- ─────────── Lobby ─────────── -->
+<section class="screen" data-screen="lobby">
+  <div class="card card--center">
+    <div class="logo">🦎</div>
+    <h1>Meccha</h1>
+    <p class="sub">WebAR Hide &amp; Seek — blend in, or find them.</p>
+
+    <label class="field">Your name
+      <input id="nameInput" type="text" maxlength="16" placeholder="e.g. Sara" autocomplete="off">
+    </label>
+
+    <div class="field">
+      <span>Role</span>
+      <div class="seg" id="roleSeg">
+        <button type="button" data-role="hider" class="is-active">🦎 Hider</button>
+        <button type="button" data-role="seeker">🔍 Seeker</button>
+      </div>
+    </div>
+
+    <button class="btn btn--primary btn--block" id="createBtn">Create room</button>
+    <div class="or"><span>or join with a code</span></div>
+    <div class="row">
+      <input id="codeInput" type="text" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false">
+      <button class="btn btn--block" id="joinBtn">Join</button>
+    </div>
+
+    <p class="hint" id="supportHint"></p>
+  </div>
+</section>
+
+<!-- ─────────── Room / waiting ─────────── -->
+<section class="screen" data-screen="room" hidden>
+  <div class="card">
+    <div class="room-head">
+      <div>
+        <div class="label">Room code</div>
+        <div class="code" id="roomCode">----</div>
+      </div>
+      <div class="room-head__actions">
+        <button class="btn btn--sm" id="shareBtn">Share link</button>
+        <button class="btn btn--sm btn--ghost" id="leaveBtn">Leave</button>
+      </div>
+    </div>
+
+    <div class="phase-pill" id="phasePill">Lobby</div>
+    <div class="timer" id="roomTimer" hidden></div>
+
+    <ul class="players" id="playersList"></ul>
+
+    <!-- Lobby controls -->
+    <div id="lobbyControls">
+      <div class="field">
+        <span>My role</span>
+        <div class="seg" id="roomRoleSeg">
+          <button type="button" data-role="hider">🦎 Hider</button>
+          <button type="button" data-role="seeker">🔍 Seeker</button>
+        </div>
+      </div>
+      <div class="host-only" id="hostControls" hidden>
+        <div class="row">
+          <label class="field">Hide time (s)<input id="hideSeconds" type="number" min="20" max="600" value="90"></label>
+          <label class="field">Seek time (s)<input id="seekSeconds" type="number" min="20" max="900" value="180"></label>
+        </div>
+        <button class="btn btn--primary btn--block" id="startBtn">Start game</button>
+      </div>
+      <p class="hint" id="waitHostHint">Waiting for the host to start…</p>
+    </div>
+
+    <!-- Hide phase -->
+    <div id="hideControls" hidden>
+      <div class="notice notice--hider" id="hiderNotice">
+        <b>Hide phase.</b> Enter AR, place your avatar somewhere sneaky and camouflage it. Tap <b>Ready</b> when done.
+        <button class="btn btn--primary btn--block btn--lg" id="enterHideBtn">📷 Enter AR &amp; hide</button>
+      </div>
+      <div class="notice notice--seeker" id="seekerWaitNotice">
+        <b>Seekers, close your eyes!</b> Hiders are placing themselves. Seeking starts when every hider is ready or the timer ends.
+      </div>
+    </div>
+
+    <!-- Seek phase -->
+    <div id="seekControls" hidden>
+      <div class="notice notice--seeker" id="seekerNotice">
+        <b>Seek phase.</b> Walk around with the camera and tap any avatar you spot.
+        <button class="btn btn--primary btn--block btn--lg" id="enterSeekBtn">🔍 Enter AR &amp; seek</button>
+      </div>
+      <div class="notice notice--hider" id="hiderSeekNotice">
+        <b>Seekers are looking…</b> Stay quiet. You'll be notified if you're found.
+        <button class="btn btn--block" id="watchBtn">📷 Watch in AR</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="resultsControls" hidden>
+      <div class="results" id="resultsBox"></div>
+      <div class="host-only" id="hostResultControls" hidden>
+        <button class="btn btn--primary btn--block" id="playAgainBtn">Play again</button>
+        <button class="btn btn--block btn--ghost" id="backToLobbyBtn">Back to lobby</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── AR view ─────────── -->
+<section class="screen screen--ar" data-screen="ar" hidden>
+  <video id="arVideo" class="ar-video" playsinline muted autoplay hidden></video>
+  <div id="arCanvasHost" class="ar-canvas"></div>
+
+  <!-- Everything inside #arOverlay is shown on top of the camera (WebXR DOM overlay / fallback) -->
+  <div id="arOverlay" class="overlay">
+    <div class="hud">
+      <span class="hud__pill" id="hudStatus">Starting…</span>
+      <span class="hud__pill hud__pill--timer" id="hudTimer">--:--</span>
+      <button class="hud__pill hud__btn" id="arExitBtn">✕ Exit</button>
+    </div>
+
+    <!-- Origin calibration (both roles) -->
+    <div class="card card--float" id="calibCard">
+      <h2>Set the shared origin</h2>
+      <p>Everyone must calibrate from the <b>same spot</b>, holding the phone upright at chest height and pointing at the <b>same wall</b>. This aligns all phones in one coordinate system.</p>
+      <button class="btn btn--primary btn--block btn--lg" id="calibBtn">📍 Set origin here</button>
+      <p class="hint" id="calibHint"></p>
+    </div>
+
+    <!-- Hider tools -->
+    <div class="tools" id="hiderTools" hidden>
+      <div class="tools__row">
+        <div class="seg seg--dark" id="toolSeg">
+          <button type="button" data-tool="place" class="is-active">📍 Place</button>
+          <button type="button" data-tool="camo">🎨 Camouflage</button>
+        </div>
+      </div>
+      <p class="tools__hint" id="toolHint">Aim at the floor or a surface, then tap <b>Place here</b>.</p>
+      <div class="tools__row" id="placeRow">
+        <button class="btn btn--sm" id="placeBtn">Place here</button>
+        <button class="btn btn--sm" id="rotLeft">↺</button>
+        <button class="btn btn--sm" id="rotRight">↻</button>
+        <label class="slider">Size <input id="scaleRange" type="range" min="0.3" max="1.6" step="0.05" value="1"></label>
+      </div>
+      <div class="tools__row" id="camoRow" hidden>
+        <label class="swatch">Color <input id="colorInput" type="color" value="#8a8a8a"></label>
+        <label class="check"><input id="textureToggle" type="checkbox" checked> Use captured texture</label>
+        <div class="patch" id="patchPreview" title="Captured texture"></div>
+      </div>
+      <div class="tools__row">
+        <button class="btn btn--primary btn--block btn--lg" id="readyBtn" disabled>✅ Ready — lock my spot</button>
+      </div>
+    </div>
+
+    <!-- Hider locked / waiting -->
+    <div class="card card--float" id="hiderLocked" hidden>
+      <h2>You're hidden 🤫</h2>
+      <p id="hiderLockedText">Waiting for the other hiders…</p>
+      <button class="btn btn--block" id="unreadyBtn">Adjust my spot</button>
+    </div>
+
+    <!-- Seeker HUD -->
+    <div class="seeker-bar" id="seekerBar" hidden>
+      <span id="seekerCount">0 / 0 found</span>
+      <span class="hint">Tap an avatar you spot</span>
+    </div>
+
+    <div class="flash" id="flash" hidden></div>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
