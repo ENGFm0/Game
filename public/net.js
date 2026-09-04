@@ -10,7 +10,7 @@
  */
 
 const PEER_PREFIX = 'meccha-hs-';
-const ACTIONS = ['player:role', 'player:name', 'room:settings', 'game:start', 'hider:ready', 'hider:unready', 'seeker:found', 'game:reset'];
+const ACTIONS = ['player:role', 'player:name', 'room:settings', 'game:start', 'hider:ready', 'hider:unready', 'seeker:found', 'game:reset', 'room:addBot', 'room:removeBots'];
 
 function emitter() {
   const listeners = new Map();

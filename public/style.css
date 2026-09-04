@@ -34,6 +34,8 @@ h1 { font-size: 2rem; letter-spacing: -.02em; }
 input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .row { display: flex; gap: 10px; align-items: end; }
 .row > * { flex: 1; min-width: 0; }
+.bots { flex-wrap: wrap; }
+.bots .btn { flex: 1 1 auto; }
 .or { color: var(--muted); font-size: .85rem; display: flex; align-items: center; gap: 10px; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .hint { color: var(--muted); font-size: .82rem; }

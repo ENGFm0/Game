@@ -88,7 +88,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => leaveRoom());
 
   // Every other event is a game action handled by the shared core (ack-aware).
-  for (const event of ['player:role', 'player:name', 'room:settings', 'game:start', 'hider:ready', 'hider:unready', 'seeker:found', 'game:reset']) {
+  for (const event of ['player:role', 'player:name', 'room:settings', 'game:start', 'hider:ready', 'hider:unready', 'seeker:found', 'game:reset', 'room:addBot', 'room:removeBots']) {
     socket.on(event, (payload, ack) => {
       const result = room ? room.handle(socket.id, event, payload) : { ok: false };
       if (typeof ack === 'function') ack(result);

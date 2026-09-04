@@ -1,13 +1,13 @@
 {
   "name": "meccha-webar-hide-and-seek",
   "version": "1.0.0",
-  "description": "WebAR multiplayer hide & seek (camouflage) — Node.js, Express, Socket.io, Three.js, WebXR",
+  "description": "WebAR multiplayer hide & seek (camouflage) \u2014 Node.js, Express, Socket.io, Three.js, WebXR",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "certs": "mkdir -p certs && openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/key.pem -out certs/cert.pem -days 365 -subj '/CN=localhost'",
-    "test": "node test/flow.test.js"
+    "test": "node test/flow.test.js && node test/bots.test.js"
   },
   "engines": {
     "node": ">=18"

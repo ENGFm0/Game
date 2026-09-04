@@ -129,6 +129,10 @@ $('#startBtn').addEventListener('click', () => {
   net.emit('game:start');
 });
 $('#playAgainBtn').addEventListener('click', () => net.emit('game:start'));
+$('#addBotHiderBtn').addEventListener('click', () => net.emit('room:addBot', { role: 'hider' }));
+$('#addBotSeekerBtn').addEventListener('click', () => net.emit('room:addBot', { role: 'seeker' }));
+$('#removeBotsBtn').addEventListener('click', () => net.emit('room:removeBots'));
+net.on('bot:hint', ({ botName, text }) => toast(`🤖 ${botName} ${text}`, 3000));
 $('#backToLobbyBtn').addEventListener('click', () => net.emit('game:reset'));
 $('#enterHideBtn').addEventListener('click', () => enterAR('hider'));
 $('#enterSeekBtn').addEventListener('click', () => enterAR('seeker'));
@@ -165,7 +169,7 @@ function renderRoom() {
     if (p.id === r.hostId) status.push('<span class="badge badge--host">host</span>');
     if (r.phase === 'hide' && p.role === 'hider') status.push(p.ready ? '<span class="badge badge--ok">ready</span>' : '<span class="badge">hiding…</span>');
     if ((r.phase === 'seek' || r.phase === 'results') && p.role === 'hider') status.push(p.found ? '<span class="badge badge--found">found</span>' : '<span class="badge badge--ok">hidden</span>');
-    li.innerHTML = `<div class="player__avatar">${p.role === 'hider' ? '🦎' : '🔍'}</div>
+    li.innerHTML = `<div class="player__avatar">${p.bot ? '🤖' : p.role === 'hider' ? '🦎' : '🔍'}</div>
       <div class="player__name">${escapeHtml(p.name)}<small>${p.role}</small></div>
       <div>${status.join(' ')}</div>`;
     list.appendChild(li);

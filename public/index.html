@@ -73,6 +73,12 @@
           <label class="field">Hide time (s)<input id="hideSeconds" type="number" min="20" max="600" value="90"></label>
           <label class="field">Seek time (s)<input id="seekSeconds" type="number" min="20" max="900" value="180"></label>
         </div>
+        <div class="row bots">
+          <button class="btn btn--sm" id="addBotHiderBtn">🤖 Add bot hider</button>
+          <button class="btn btn--sm" id="addBotSeekerBtn">🤖 Add bot seeker</button>
+          <button class="btn btn--sm btn--ghost" id="removeBotsBtn">Remove bots</button>
+        </div>
+        <p class="hint">Playing alone? A bot hider hides near your origin for you to find; a bot seeker hunts you (it finds you about 70% of the time).</p>
         <button class="btn btn--primary btn--block" id="startBtn">Start game</button>
       </div>
       <p class="hint" id="waitHostHint">Waiting for the host to start…</p>

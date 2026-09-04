@@ -18,6 +18,13 @@ it; seekers walk around with their phones and tap the avatars they spot.
 2. Open **https://engfm0.github.io/Game/** on every phone. Create a room on one phone, share the
    code or the link, join on the others. The host must keep the page open.
 
+## Playing alone (bots)
+
+In the lobby the host can add **🤖 bot hiders** and **🤖 bot seekers**. A bot hider picks a spot 1.5–3 m
+from the shared origin (within ±70° of the direction you calibrated towards) for you to find; a bot seeker
+drops hints while it hunts and finds each hider with 70% probability at a random moment of the seek phase
+(`botSkill` in `room:settings`, 0–1).
+
 ## Run with the Node server
 
 ```bash
@@ -59,6 +66,8 @@ On Glitch / Replit / Render just `npm start`; they provide HTTPS.
 | `hider:unready` | | |
 | `seeker:found` | `{targetId}` + ack `{ok}` | seek phase only |
 | `game:reset` | | host only |
+| `room:addBot` | `{role}` + ack `{ok, id}` | host only, lobby |
+| `room:removeBots` | | host only, lobby |
 
 | Host → clients | Payload |
 |---|---|
@@ -70,6 +79,7 @@ On Glitch / Replit / Render just `npm start`; they provide HTTPS.
 | `game:results` | `{reason, winner, foundCount, hiderCount}` |
 | `error:msg` | `{message}` |
 | `room:closed` | `{message}` (serverless mode, when the host leaves) |
+| `bot:hint` | `{botName, text}` while a bot seeker is hunting |
 
 ## Files
 

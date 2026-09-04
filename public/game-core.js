@@ -53,15 +53,18 @@
       this.emit = emit;
       this.phase = PHASE.LOBBY;
       this.phaseEndsAt = null;
-      this.settings = { hideSeconds: 90, seekSeconds: 180 };
+      this.settings = { hideSeconds: 90, seekSeconds: 180, botSkill: 0.7 };
       this.players = new Map();
       this.timer = null;
+      this.botTimers = [];
+      this.botCount = 0;
       this.createdAt = Date.now();
     }
 
     get hiders() { return [...this.players.values()].filter((p) => p.role === ROLE.HIDER); }
     get seekers() { return [...this.players.values()].filter((p) => p.role === ROLE.SEEKER); }
-    get empty() { return this.players.size === 0; }
+    get humans() { return [...this.players.values()].filter((p) => !p.bot); }
+    get empty() { return this.humans.length === 0; }
 
     /** What clients are allowed to see. Hidden positions are only revealed in seek/results. */
     snapshot() {
@@ -74,7 +77,7 @@
         settings: this.settings,
         serverNow: Date.now(),
         players: [...this.players.values()].map((p) => ({
-          id: p.id, name: p.name, role: p.role, ready: p.ready, placed: !!p.hidden,
+          id: p.id, name: p.name, role: p.role, bot: !!p.bot, ready: p.ready, placed: !!p.hidden,
           found: p.found, foundBy: p.foundBy, foundAt: p.foundAt, hidden: reveal ? p.hidden : null,
         })),
       };
@@ -84,10 +87,13 @@
     fail(id, message) { this.emit(id, 'error:msg', { message }); return { ok: false, error: message }; }
 
     clearTimer() { if (this.timer) { clearTimeout(this.timer); this.timer = null; } }
-    dispose() { this.clearTimer(); }
+    clearBotTimers() { this.botTimers.forEach(clearTimeout); this.botTimers = []; }
+    dispose() { this.clearTimer(); this.clearBotTimers(); }
+    later(ms, fn) { this.botTimers.push(setTimeout(fn, ms)); }
 
     setPhase(phase, seconds) {
       this.clearTimer();
+      this.clearBotTimers();
       this.phase = phase;
       this.phaseEndsAt = seconds ? Date.now() + seconds * 1000 : null;
       if (seconds) {
@@ -104,7 +110,7 @@
       for (const p of this.players.values()) { p.ready = false; p.hidden = null; p.found = false; p.foundBy = null; p.foundAt = null; }
     }
 
-    startHide() { this.resetPlayers(); this.setPhase(PHASE.HIDE, this.settings.hideSeconds); }
+    startHide() { this.resetPlayers(); this.setPhase(PHASE.HIDE, this.settings.hideSeconds); this.runBotHiders(); }
 
     startSeek(reason) {
       // Hiders who never placed themselves count as found (they are not in the room).
@@ -112,6 +118,54 @@
       this.emit('*', 'game:seekStart', { reason });
       this.setPhase(PHASE.SEEK, this.settings.seekSeconds);
       if (this.hiders.every((p) => p.found)) this.endGame('nobody-hid');
+      else this.runBotSeekers();
+    }
+
+    /* ── bots (for solo testing) ── */
+    addBot(role) {
+      const id = 'bot-' + (++this.botCount);
+      this.players.set(id, { id, name: 'Bot ' + this.botCount, role: role === ROLE.SEEKER ? ROLE.SEEKER : ROLE.HIDER, bot: true, ready: false, hidden: null, found: false, foundBy: null, foundAt: null });
+      this.broadcast();
+      return id;
+    }
+    removeBots() { for (const p of [...this.players.values()]) if (p.bot) this.players.delete(p.id); this.broadcast(); }
+
+    /** Bot hiders pick a spot 1.5–3 m from the shared origin, within ±70° of the origin's forward direction. */
+    runBotHiders() {
+      for (const bot of this.hiders.filter((p) => p.bot)) {
+        this.later(3000 + Math.random() * 6000, () => {
+          if (this.phase !== PHASE.HIDE || !this.players.has(bot.id)) return;
+          const angle = (Math.random() * 2 - 1) * (70 * Math.PI / 180);
+          const dist = 1.5 + Math.random() * 1.5;
+          const palette = ['#8b8378', '#a89f91', '#6b6b6b', '#c9bfae', '#5a6b5d', '#9c8a6e', '#7d7f86', '#b5a184'];
+          this.handle(bot.id, 'hider:ready', {
+            // room frame: origin = calibration point at chest height, so the floor sits ~1.45 m below it
+            position: [-Math.sin(angle) * dist, -1.45, -Math.cos(angle) * dist],
+            rotationY: Math.random() * Math.PI * 2,
+            scale: 0.7 + Math.random() * 0.3,
+            color: palette[Math.floor(Math.random() * palette.length)],
+            mode: 'xr',
+          });
+        });
+      }
+    }
+
+    /** Bot seekers find each hider at a random moment with probability `botSkill`, dropping hints along the way. */
+    runBotSeekers() {
+      const bots = this.seekers.filter((p) => p.bot);
+      if (!bots.length) return;
+      const total = this.settings.seekSeconds * 1000;
+      const hints = ['is checking behind the sofa…', 'is looking under the table…', 'is scanning the corners…', 'thinks it saw something move…', 'is peeking behind the curtains…', 'is walking past the door…'];
+      for (const bot of bots) {
+        for (let t = 8000; t < total * 0.9; t += 12000 + Math.random() * 8000) {
+          this.later(t, () => { if (this.phase === PHASE.SEEK) this.emit('*', 'bot:hint', { botName: bot.name, text: hints[Math.floor(Math.random() * hints.length)] }); });
+        }
+        for (const target of this.hiders.filter((h) => !h.bot || Math.random() < 0.5)) {
+          if (Math.random() > this.settings.botSkill) continue;   // the bot never finds this one
+          const at = total * (0.3 + Math.random() * 0.6);
+          this.later(at, () => { if (this.phase === PHASE.SEEK) this.handle(bot.id, 'seeker:found', { targetId: target.id }); });
+        }
+      }
     }
 
     endGame(reason) {
@@ -134,7 +188,7 @@
     leave(id) {
       if (!this.players.delete(id)) return;
       if (this.empty) { this.dispose(); return; }
-      if (this.hostId === id) this.hostId = this.players.keys().next().value;
+      if (this.hostId === id) this.hostId = this.humans[0].id;
       // If the last unready / unfound hider leaves mid-round, resolve the round.
       if (this.phase === PHASE.HIDE && this.hiders.length && this.hiders.every((p) => p.ready)) this.startSeek('all-ready');
       else if (this.phase === PHASE.SEEK && this.hiders.every((p) => p.found)) this.endGame('all-found');
@@ -160,8 +214,18 @@
           const clamp = (v, [lo, hi], d) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Math.round(Number(v)))) : d);
           this.settings.hideSeconds = clamp(payload.hideSeconds, LIMITS.hideSeconds, this.settings.hideSeconds);
           this.settings.seekSeconds = clamp(payload.seekSeconds, LIMITS.seekSeconds, this.settings.seekSeconds);
+          if (payload.botSkill !== undefined) this.settings.botSkill = clamp(Number(payload.botSkill) * 100, [0, 100], this.settings.botSkill * 100) / 100;
           this.broadcast(); return { ok: true };
         }
+
+        case 'room:addBot':
+          if (this.hostId !== id || this.phase !== PHASE.LOBBY) return { ok: false };
+          if (this.players.size >= LIMITS.maxPlayers) return this.fail(id, 'Room is full.');
+          return { ok: true, id: this.addBot(payload.role) };
+
+        case 'room:removeBots':
+          if (this.hostId !== id || this.phase !== PHASE.LOBBY) return { ok: false };
+          this.removeBots(); return { ok: true };
 
         case 'game:start':
           if (this.hostId !== id) return this.fail(id, 'Only the host can start.');
