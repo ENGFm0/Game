@@ -1,0 +1,28 @@
+name: Publish to GitHub Pages
+
+# Copies public/ to the gh-pages branch on every push.
+# One-time setup in the repo: Settings → Pages → Source: "Deploy from a branch" → gh-pages / (root).
+# The site then runs in serverless mode (WebRTC between phones) — no Node server needed.
+on:
+  push:
+    branches: [claude/swords-palm-dashboard-5xec6v, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          force_orphan: true
+          commit_message: "Publish site"

@@ -11,6 +11,7 @@
  * ("Set origin"). All positions are exchanged in that room frame.
  */
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import { createNet } from './net.js';
 
 /* ═══════════════════════════ helpers ═══════════════════════════ */
 const $ = (sel) => document.querySelector(sel);
@@ -40,44 +41,46 @@ const state = {
   ar: null,                // active ARSession
   arRole: null,            // 'hider' | 'seeker' | 'watch'
 };
-const socket = io({ transports: ['websocket', 'polling'] });
+// Socket.io when served by server.js, otherwise serverless WebRTC (host phone runs the game core).
+const net = await createNet().catch((e) => { toast(e.message, 6000); throw e; });
 
 const me = () => state.room && state.room.players.find((p) => p.id === state.id);
 const isHost = () => state.room && state.room.hostId === state.id;
 const hiders = () => (state.room ? state.room.players.filter((p) => p.role === 'hider') : []);
 
 /* ═══════════════════════════ socket events ═══════════════════════════ */
-socket.on('connect', () => { state.id = socket.id; });
-socket.on('disconnect', () => toast('Connection lost — reconnecting…'));
-socket.on('error:msg', ({ message }) => toast(message));
+net.on('connect', () => { state.id = net.id; });
+net.on('disconnect', () => toast('Connection lost — reconnecting…'));
+net.on('room:closed', ({ message }) => { toast(message, 5000); if (state.ar) state.ar.stop(); state.room = null; history.replaceState(null, '', location.pathname); showScreen('lobby'); });
+net.on('error:msg', ({ message }) => toast(message));
 
-socket.on('room:joined', ({ code, id }) => {
+net.on('room:joined', ({ code, id }) => {
   state.id = id;
   history.replaceState(null, '', `?room=${code}`);
   showScreen('room');
 });
 
-socket.on('room:state', (room) => {
+net.on('room:state', (room) => {
   state.room = room;
   state.clockOffset = room.serverNow - Date.now();
   renderRoom();
   if (state.ar) state.ar.onRoomState(room);
 });
 
-socket.on('game:phase', ({ phase }) => {
+net.on('game:phase', ({ phase }) => {
   if (phase === 'hide') { toast('Hide phase started!'); vibrate(80); }
   if (phase === 'seek') { toast('Seek phase — seekers, go!'); vibrate([80, 60, 80]); }
   if (phase === 'lobby' && state.ar) state.ar.stop();
 });
 
-socket.on('player:found', ({ targetId, targetName, seekerName }) => {
+net.on('player:found', ({ targetId, targetName, seekerName }) => {
   vibrate([120, 60, 120]);
   if (targetId === state.id) toast(`You were found by ${seekerName}!`, 4000);
   else toast(`${seekerName} found ${targetName}!`);
   if (state.ar) state.ar.markFound(targetId, seekerName);
 });
 
-socket.on('game:results', ({ winner, foundCount, hiderCount }) => {
+net.on('game:results', ({ winner, foundCount, hiderCount }) => {
   vibrate([200, 100, 200]);
   toast(winner === 'seekers' ? `Seekers win — all ${hiderCount} found!` : winner === 'hiders' ? `Hiders win — ${hiderCount - foundCount} never found!` : 'Round over.');
   if (state.ar) state.ar.stop();
@@ -95,7 +98,7 @@ $('#roleSeg').addEventListener('click', (e) => { const b = e.target.closest('but
 $('#roomRoleSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   setRoleUI(b.dataset.role);
-  socket.emit('player:role', { role: b.dataset.role });
+  net.emit('player:role', { role: b.dataset.role });
 });
 
 function readName() {
@@ -104,16 +107,16 @@ function readName() {
   state.name = n; localStorage.setItem('meccha.name', n);
   return n;
 }
-$('#createBtn').addEventListener('click', () => { const name = readName(); if (name) socket.emit('room:create', { name, role: state.role }); });
+$('#createBtn').addEventListener('click', () => { const name = readName(); if (name) net.emit('room:create', { name, role: state.role }); });
 $('#joinBtn').addEventListener('click', () => {
   const name = readName(); if (!name) return;
   const code = $('#codeInput').value.trim().toUpperCase();
   if (code.length !== 4) return toast('Enter the 4-character room code');
-  socket.emit('room:join', { code, name, role: state.role });
+  net.emit('room:join', { code, name, role: state.role });
 });
 $('#codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#joinBtn').click(); });
 
-$('#leaveBtn').addEventListener('click', () => { socket.emit('room:leave'); state.room = null; history.replaceState(null, '', location.pathname); showScreen('lobby'); });
+$('#leaveBtn').addEventListener('click', () => { net.emit('room:leave'); state.room = null; history.replaceState(null, '', location.pathname); showScreen('lobby'); });
 $('#shareBtn').addEventListener('click', async () => {
   const url = `${location.origin}${location.pathname}?room=${state.room.code}`;
   try {
@@ -122,11 +125,11 @@ $('#shareBtn').addEventListener('click', async () => {
   } catch (_) { /* user cancelled */ }
 });
 $('#startBtn').addEventListener('click', () => {
-  socket.emit('room:settings', { hideSeconds: $('#hideSeconds').value, seekSeconds: $('#seekSeconds').value });
-  socket.emit('game:start');
+  net.emit('room:settings', { hideSeconds: $('#hideSeconds').value, seekSeconds: $('#seekSeconds').value });
+  net.emit('game:start');
 });
-$('#playAgainBtn').addEventListener('click', () => socket.emit('game:start'));
-$('#backToLobbyBtn').addEventListener('click', () => socket.emit('game:reset'));
+$('#playAgainBtn').addEventListener('click', () => net.emit('game:start'));
+$('#backToLobbyBtn').addEventListener('click', () => net.emit('game:reset'));
 $('#enterHideBtn').addEventListener('click', () => enterAR('hider'));
 $('#enterSeekBtn').addEventListener('click', () => enterAR('seeker'));
 $('#watchBtn').addEventListener('click', () => enterAR('watch'));
@@ -134,9 +137,10 @@ $('#watchBtn').addEventListener('click', () => enterAR('watch'));
 /* Support hint + auto-fill code from ?room= */
 (async () => {
   const xr = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false));
-  $('#supportHint').textContent = xr
+  $('#supportHint').textContent = (xr
     ? 'WebXR AR detected — full 6-DoF tracking available.'
-    : 'WebXR AR not available on this browser — using camera + gyroscope mode (3-DoF). Works best on Android Chrome.';
+    : 'WebXR AR not available on this browser — using camera + gyroscope mode (3-DoF). Works best on Android Chrome.')
+    + (net.mode === 'peer' ? ' Serverless mode: the room lives on the host\'s phone, so the host must keep the page open.' : '');
   const code = new URLSearchParams(location.search).get('room');
   if (code) $('#codeInput').value = code.toUpperCase();
 })();
@@ -570,11 +574,11 @@ class ARSession {
     if (!this.draft.placed) return;
     const { position, rotationY } = this.worldToRoom(this.myAvatar.position, this.myAvatar.rotation.y);
     const useTex = this.draft.useTexture && this.draft.patch;
-    socket.emit('hider:ready', { position, rotationY, scale: this.draft.scale, color: this.draft.color, texture: useTex ? this.draft.patch : null, mode: this.mode });
+    net.emit('hider:ready', { position, rotationY, scale: this.draft.scale, color: this.draft.color, texture: useTex ? this.draft.patch : null, mode: this.mode });
     this.locked = true; this.reticle.visible = false;
     this.updateOverlay();
   }
-  unlock() { socket.emit('hider:unready'); this.locked = false; this.updateOverlay(); }
+  unlock() { net.emit('hider:unready'); this.locked = false; this.updateOverlay(); }
 
   /* ── seeker / watch: render hidden avatars ── */
   syncAvatars(room) {
@@ -617,7 +621,7 @@ class ARSession {
     const hit = ray.intersectObjects(targets, false)[0];
     if (!hit) return;
     const id = hit.object.parent.userData.playerId;
-    socket.emit('seeker:found', { targetId: id }, (res) => {
+    net.emit('seeker:found', { targetId: id }, (res) => {
       if (res && res.ok) { this.flash('FOUND!'); this.markFound(id, state.name); }
     });
   }

@@ -177,7 +177,10 @@
 
 <div class="toast" id="toast" role="status"></div>
 
-<script src="/socket.io/socket.io.js"></script>
+<!-- Socket.io client exists only when server.js hosts the page; on static hosting it 404s and we go serverless. -->
+<script src="/socket.io/socket.io.js" onerror="window.__noSocket = true"></script>
+<script src="game-core.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -17,6 +17,8 @@
     "socket.io": "^4.7.5"
   },
   "devDependencies": {
+    "peer": "^1.0.2",
+    "peerjs": "^1.5.4",
     "socket.io-client": "^4.7.5",
     "three": "^0.160.0"
   },
