@@ -115,7 +115,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .seeker-bar .hint { color: rgba(255,255,255,.7); font-weight: 500; }
 .flash { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font-size: clamp(2.4rem, 12vw, 5rem); font-weight: 900; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,.6); background: radial-gradient(circle, rgba(245,158,11,.35), transparent 70%); animation: flash 1.6s ease-out forwards; }
 @keyframes flash { 0% { opacity: 0; transform: scale(.6); } 15% { opacity: 1; transform: scale(1.05); } 80% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
-.pads { position: absolute; inset-inline: 14px; bottom: 214px; display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none; }
+.pads { display: flex; justify-content: space-between; align-items: flex-end; padding: 0 6px 24px; pointer-events: none; }
 .joy { position: relative; width: 132px; height: 132px; border-radius: 50%; background: rgba(0,0,0,.4); border: 2px solid rgba(255,255,255,.35); backdrop-filter: blur(6px); pointer-events: auto; touch-action: none; }
 .joy__knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,.9); box-shadow: 0 6px 16px rgba(0,0,0,.4); transform: translate(-50%, -50%); transition: transform .05s; }
 .joy__label { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); color: #fff; font-size: .72rem; font-weight: 700; text-shadow: 0 1px 3px #000; }
