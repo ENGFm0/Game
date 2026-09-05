@@ -115,6 +115,7 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .seeker-bar .hint { color: rgba(255,255,255,.7); font-weight: 500; }
 .flash { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font-size: clamp(2.4rem, 12vw, 5rem); font-weight: 900; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,.6); background: radial-gradient(circle, rgba(245,158,11,.35), transparent 70%); animation: flash 1.6s ease-out forwards; }
 @keyframes flash { 0% { opacity: 0; transform: scale(.6); } 15% { opacity: 1; transform: scale(1.05); } 80% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
+.motion-btn { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 46px); left: 50%; transform: translateX(-50%); width: min(92vw, 380px); white-space: normal; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 .overlay .reticle-hint { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 28px; height: 28px; border: 2px solid rgba(255,255,255,.7); border-radius: 50%; pointer-events: none; }
 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); z-index: 100; padding: 10px 16px; border-radius: 999px; background: #fff; color: #111; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.4); opacity: 0; transition: .25s; max-width: calc(100% - 32px); text-align: center; pointer-events: none; }

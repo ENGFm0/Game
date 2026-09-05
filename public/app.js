@@ -459,13 +459,17 @@ class ARSession {
     this.video = video;
     this.videoCanvas = document.createElement('canvas');
 
-    const perm = orientationPermission ? await orientationPermission : 'granted';
-    if (perm !== 'granted') toast('Motion access denied — you can still look around by dragging.', 4000);
+    // Gyroscope: the camera turns with the phone, so a placed avatar stays put in the room.
     this.onOrient = (e) => {
       if (e.alpha == null) return;
       this.orientation = { alpha: THREE.MathUtils.degToRad(e.alpha), beta: THREE.MathUtils.degToRad(e.beta || 0), gamma: THREE.MathUtils.degToRad(e.gamma || 0), has: true };
+      if (!this.gyroOn) { this.gyroOn = true; this.setStatus('Camera + gyro'); $('#motionBtn').hidden = true; }
     };
     window.addEventListener('deviceorientation', this.onOrient, true);
+    const perm = orientationPermission ? await orientationPermission : 'granted';
+    if (perm !== 'granted') toast('Motion access was denied — tap "Enable motion" to try again.', 4000);
+    // If no sensor data arrives, offer a button (iOS only grants motion access from a tap).
+    setTimeout(() => { if (!this.stopped && !this.gyroOn) { $('#motionBtn').hidden = false; this.setStatus('Camera (no gyro)'); } }, 1500);
 
     // Drag-to-look for devices without motion sensors (desktop testing)
     this.drag = { yaw: 0, pitch: 0, active: false, x: 0, y: 0 };
@@ -491,6 +495,18 @@ class ARSession {
   }
 
   setStatus(t) { $('#hudStatus').textContent = t; }
+
+  /** Re-requests motion-sensor access from a user tap (iOS Safari requirement). */
+  async enableMotion() {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const r = await DeviceOrientationEvent.requestPermission().catch(() => 'denied');
+      if (r !== 'granted') { toast('Motion is blocked. iPhone: Settings → Safari → Motion & Orientation Access, then reload.', 6000); return; }
+      toast('Motion sensors on — turn the phone and the avatar stays in place.', 2500);
+    } else {
+      toast('No motion sensors detected on this device — drag the screen to look around.', 4000);
+    }
+    setTimeout(() => { if (!this.gyroOn) toast('Still no sensor data. Make sure the phone is not in a case that blocks sensors, or reload the page.', 5000); }, 2000);
+  }
 
   /* ── per-frame ── */
   frame(time, xrFrame) {
@@ -766,6 +782,7 @@ class ARSession {
     const on = (sel, ev, fn) => { const el = $(sel); el.addEventListener(ev, fn); this.handlers.push([el, ev, fn]); };
     on('#arExitBtn', 'click', () => this.stop());
     on('#calibBtn', 'click', () => this.calibrate());
+    on('#motionBtn', 'click', () => this.enableMotion());
     on('#toolSeg', 'click', (e) => { const b = e.target.closest('button'); if (b) this.setTool(b.dataset.tool); });
     on('#placeBtn', 'click', () => this.placeAtReticle());
     on('#rotLeft', 'click', () => this.rotate(Math.PI / 8));
