@@ -29,6 +29,18 @@ function toast(msg, ms = 2600) {
 function showScreen(name) {
   $$('.screen').forEach((s) => { s.hidden = s.dataset.screen !== name; });
 }
+let audioCtx = null;
+/** Tiny synth for shot / hit sounds (no assets needed). */
+function sfx(kind) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime, o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    if (kind === 'shot') { o.type = 'square'; o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(140, t + .12); g.gain.setValueAtTime(.25, t); g.gain.exponentialRampToValueAtTime(.001, t + .15); o.start(t); o.stop(t + .16); }
+    else if (kind === 'hit') { o.type = 'sawtooth'; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(60, t + .35); g.gain.setValueAtTime(.35, t); g.gain.exponentialRampToValueAtTime(.001, t + .4); o.start(t); o.stop(t + .42); }
+    else { o.type = 'triangle'; o.frequency.setValueAtTime(300, t); g.gain.setValueAtTime(.12, t); g.gain.exponentialRampToValueAtTime(.001, t + .1); o.start(t); o.stop(t + .11); }
+  } catch (_) { /* audio blocked */ }
+}
 function vibrate(pattern) { try { navigator.vibrate && navigator.vibrate(pattern); } catch (_) { /* unsupported */ } }
 
 /* ═══════════════════════════ state ═══════════════════════════ */
@@ -75,8 +87,8 @@ net.on('game:phase', ({ phase }) => {
 
 net.on('player:found', ({ targetId, targetName, seekerName }) => {
   vibrate([120, 60, 120]);
-  if (targetId === state.id) toast(`You were found by ${seekerName}!`, 4000);
-  else toast(`${seekerName} found ${targetName}!`);
+  if (targetId === state.id) toast(`💥 ${seekerName} shot you!`, 4000);
+  else toast(`💥 ${seekerName} hit ${targetName}!`);
   if (state.ar) state.ar.markFound(targetId, seekerName);
 });
 
@@ -143,7 +155,9 @@ $('#watchBtn').addEventListener('click', () => enterAR('watch'));
   const xr = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false));
   $('#supportHint').textContent = (xr
     ? 'WebXR AR detected — full 6-DoF tracking available.'
-    : 'WebXR AR not available on this browser — using camera + gyroscope mode (3-DoF). Works best on Android Chrome.')
+    : (/android/i.test(navigator.userAgent)
+        ? 'No WebXR here: install "Google Play Services for AR" from the Play Store and use Chrome for full room tracking. Until then: camera + gyroscope mode (turning only).'
+        : 'This browser has no WebXR AR (iPhone Safari): camera + gyroscope mode — the avatar stays put when you turn, but the phone cannot sense you walking.'))
     + (net.mode === 'peer' ? ' Serverless mode: the room lives on the host\'s phone, so the host must keep the page open.' : '');
   const code = new URLSearchParams(location.search).get('room');
   if (code) $('#codeInput').value = code.toUpperCase();
@@ -547,8 +561,40 @@ class ARSession {
       // keep the draft avatar in front of the camera before it is placed
       if (this.myAvatar && !this.draft.placed && this.calibrated && !this.locked) this.placeAhead(2);
     }
-    // update label sprites to face camera automatically (sprites do)
+    this.tick();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Per-frame: joystick motion, projectiles, hit animations. */
+  tick() {
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - (this.lastTick || now)) / 1000); this.lastTick = now;
+    // joystick → slide the avatar relative to where the camera looks; lift bar → up/down
+    if (this.joy && (this.joy.x || this.joy.y || this.joy.lift) && this.myAvatar && this.draft.placed && !this.locked) {
+      const { yaw } = this.cameraPose();
+      const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+      const speed = 1.1 * dt;                                  // m/s at full deflection
+      this.myAvatar.position.addScaledVector(right, this.joy.x * speed).addScaledVector(fwd, -this.joy.y * speed);
+      this.myAvatar.position.y += this.joy.lift * 0.8 * dt;
+      this.draft.lift = this.myAvatar.position.y - (this.mode === 'xr' ? this.myAvatar.position.y : 0);
+    }
+    // projectiles
+    for (const pr of this.projectiles || []) {
+      const k = Math.min(1, (now - pr.t0) / pr.dur);
+      pr.mesh.position.lerpVectors(pr.from, pr.to, k);
+      if (k >= 1) { this.scene.remove(pr.mesh); pr.done = true; pr.onArrive(); }
+    }
+    if (this.projectiles) this.projectiles = this.projectiles.filter((p) => !p.done);
+    // hit animation: shot avatars topple over
+    for (const av of this.avatars.values()) {
+      if (av.userData.fallT0) {
+        const k = Math.min(1, (now - av.userData.fallT0) / 600);
+        const e = 1 - Math.pow(1 - k, 3);
+        av.userData.joints.hips.rotation.x = av.userData.fallFrom + (-1.45 - av.userData.fallFrom) * e;
+        av.userData.joints.hips.position.y = av.userData.fallY0 + (0.2 - av.userData.fallY0) * e;
+        if (k >= 1) av.userData.fallT0 = 0;
+      }
+    }
   }
 
   /* ── coordinate frames ── */
@@ -595,8 +641,8 @@ class ARSession {
     } else this.placeAhead(this.mode === 'xr' ? 1.5 : 2);
     this.myAvatar.position.y += this.draft.lift;
     this.draft.placed = true;
-    $('#readyBtn').disabled = false;
-    $('#toolHint').innerHTML = 'Placed. <b>Drag</b> to slide it, ↺ ↻ to turn, ▲ ▼ for height, pick a pose, then <b>Camouflage</b>.';
+    $('#readyBtn').disabled = false; $('#pads').hidden = false;
+    $('#toolHint').innerHTML = 'Placed. Use the <b>joystick</b> to move it, the bar to raise/lower, ↺ ↻ to turn, pick a pose, then <b>Camouflage</b>.';
     vibrate(30);
   }
   rotate(delta) { this.draft.rotationY += delta; if (this.draft.placed) this.myAvatar.rotation.y += delta; }
@@ -716,9 +762,10 @@ class ARSession {
     if (av && !av.userData.found) {
       av.userData.found = true;
       av.userData.material.map = null; av.userData.material.color.set('#f59e0b'); av.userData.material.needsUpdate = true;
-      av.add(makeLabel('FOUND!'));
+      av.add(makeLabel('HIT!'));
+      av.userData.fallT0 = performance.now(); av.userData.fallFrom = av.userData.joints.hips.rotation.x; av.userData.fallY0 = av.userData.joints.hips.position.y;
     }
-    if (this.role === 'hider' && playerId === state.id) { $('#hiderLockedText').textContent = `You were found${seekerName ? ' by ' + seekerName : ''}! 😱`; }
+    if (this.role === 'hider' && playerId === state.id) { sfx('hit'); $('#hiderLockedText').textContent = `You were shot${seekerName ? ' by ' + seekerName : ''}! 💥`; }
     this.updateSeekerBar(state.room);
   }
   updateSeekerBar(room) {
@@ -726,17 +773,32 @@ class ARSession {
     const hs = room.players.filter((p) => p.role === 'hider');
     $('#seekerCount').textContent = `${hs.filter((p) => p.found).length} / ${hs.length} found`;
   }
-  tapSeek(nx, ny) {
+  /** Seeker shot: a projectile flies from the phone toward the aim point; it counts if it hits an avatar. */
+  fireAt(nx, ny) {
+    const now = performance.now();
+    if (this.lastShot && now - this.lastShot < 500) return;
+    this.lastShot = now;
+    sfx('shot'); vibrate(25);
+    const btn = $('#fireBtn'); btn.classList.add('is-cooling'); setTimeout(() => btn.classList.remove('is-cooling'), 500);
+
     const ray = new THREE.Raycaster();
     this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
     ray.setFromCamera(new THREE.Vector2(nx * 2 - 1, -(ny * 2 - 1)), this.camera);
     const targets = [...this.avatars.values()].filter((a) => !a.userData.found).map((a) => a.userData.hit);
     const hit = ray.intersectObjects(targets, false)[0];
-    if (!hit) return;
-    const id = hit.object.parent.userData.playerId;
-    net.emit('seeker:found', { targetId: id }, (res) => {
-      if (res && res.ok) { this.flash('FOUND!'); this.markFound(id, state.name); }
-    });
+    const from = ray.ray.origin.clone().add(ray.ray.direction.clone().multiplyScalar(0.3)).add(new THREE.Vector3(0, -0.12, 0));
+    const to = hit ? hit.point.clone() : ray.ray.origin.clone().add(ray.ray.direction.clone().multiplyScalar(6));
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfbbf24 }));
+    mesh.position.copy(from); this.scene.add(mesh);
+    this.projectiles = this.projectiles || [];
+    this.projectiles.push({ mesh, from, to, t0: now, dur: Math.min(450, 80 + from.distanceTo(to) * 70), onArrive: () => {
+      if (!hit) { $('#crosshair').classList.remove('is-hit'); return; }
+      const id = hit.object.parent.userData.playerId;
+      net.emit('seeker:found', { targetId: id }, (res) => {
+        if (res && res.ok) { sfx('hit'); vibrate([60, 40, 120]); this.flash('HIT!'); this.markFound(id, state.name); }
+      });
+    } });
+    $('#crosshair').classList.toggle('is-hit', !!hit);
   }
   flash(text) {
     const el = $('#flash'); el.textContent = text; el.hidden = false;
@@ -764,7 +826,10 @@ class ARSession {
     $('#calibHint').textContent = this.mode === 'xr' ? 'Tip: mark the spot with tape so everyone calibrates identically.' : 'Gyro mode: you will also look around from this spot during the game.';
     $('#hiderTools').hidden = !(hider && this.calibrated && !this.locked);
     $('#hiderLocked').hidden = !(hider && this.locked);
+    const seeking = this.role === 'seeker' && this.calibrated;
     $('#seekerBar').hidden = !(this.role !== 'hider' && this.calibrated);
+    $('#crosshair').hidden = !seeking; $('#fireBtn').hidden = !seeking;
+    $('#pads').hidden = !(hider && this.calibrated && !this.locked && this.tool === 'place' && this.draft.placed);
     $('#unreadyBtn').hidden = !(state.room && state.room.phase === 'hide');
     if (hider && this.calibrated && !this.locked) this.setTool(this.tool || 'place');
   }
@@ -772,9 +837,10 @@ class ARSession {
     this.tool = tool;
     $$('#toolSeg button').forEach((b) => b.classList.toggle('is-active', b.dataset.tool === tool));
     $('#placeRow').hidden = tool !== 'place';
+    $('#pads').hidden = !(tool === 'place' && this.draft.placed && !this.locked);
     $('#camoRow').hidden = tool !== 'camo';
     $('#toolHint').innerHTML = tool === 'place'
-      ? (this.draft.placed ? 'Placed. <b>Drag</b> to slide it, ↺ ↻ to turn, ▲ ▼ for height, pick a pose, then <b>Camouflage</b>.' : this.mode === 'xr' ? 'Aim at the floor or a surface, then tap <b>Place here</b>.' : 'Turn to face your hiding spot, then tap <b>Place here</b> (2 m ahead).')
+      ? (this.draft.placed ? 'Placed. Use the <b>joystick</b> to move it, the bar to raise/lower, ↺ ↻ to turn, pick a pose, then <b>Camouflage</b>.' : this.mode === 'xr' ? 'Aim at the floor or a surface, then tap <b>Place here</b>.' : 'Turn to face your hiding spot, then tap <b>Place here</b> (2 m ahead).')
       : 'Tap <b>Auto camouflage</b> to copy what is behind the avatar, or tap anywhere to sample that spot.';
   }
   bindUI() {
@@ -788,8 +854,26 @@ class ARSession {
     on('#rotLeft', 'click', () => this.rotate(Math.PI / 8));
     on('#rotRight', 'click', () => this.rotate(-Math.PI / 8));
     on('#scaleRange', 'input', (e) => this.setScale(parseFloat(e.target.value)));
-    on('#liftUp', 'click', () => this.lift(0.25));
-    on('#liftDown', 'click', () => this.lift(-0.25));
+    on('#fireBtn', 'pointerdown', (e) => { e.preventDefault(); if (state.room && state.room.phase === 'seek') this.fireAt(0.5, 0.5); });
+    this.joy = { x: 0, y: 0, lift: 0 };
+    const pad = (el, knob, onMove, onEnd) => {
+      let pid = null;
+      const rect = () => el.getBoundingClientRect();
+      const upd = (e) => { const r = rect(); onMove((e.clientX - (r.left + r.width / 2)) / (r.width / 2), (e.clientY - (r.top + r.height / 2)) / (r.height / 2), knob, r); };
+      on('#' + el.id, 'pointerdown', (e) => { pid = e.pointerId; el.setPointerCapture(pid); e.preventDefault(); e.stopPropagation(); upd(e); });
+      on('#' + el.id, 'pointermove', (e) => { if (e.pointerId === pid) { e.preventDefault(); upd(e); } });
+      const end = (e) => { if (e.pointerId === pid) { pid = null; onEnd(knob); } };
+      on('#' + el.id, 'pointerup', end); on('#' + el.id, 'pointercancel', end);
+    };
+    pad($('#joy'), $('#joyKnob'), (x, y, knob, r) => {
+      const len = Math.hypot(x, y) || 1, k = Math.min(1, len);
+      this.joy.x = (x / len) * k; this.joy.y = (y / len) * k;
+      knob.style.transform = `translate(calc(-50% + ${this.joy.x * r.width * 0.32}px), calc(-50% + ${this.joy.y * r.height * 0.32}px))`;
+    }, (knob) => { this.joy.x = 0; this.joy.y = 0; knob.style.transform = 'translate(-50%, -50%)'; });
+    pad($('#liftBar'), $('#liftKnob'), (x, y, knob, r) => {
+      this.joy.lift = -Math.max(-1, Math.min(1, y));
+      knob.style.transform = `translate(-50%, calc(-50% + ${Math.max(-1, Math.min(1, y)) * r.height * 0.36}px))`;
+    }, (knob) => { this.joy.lift = 0; knob.style.transform = 'translate(-50%, -50%)'; });
     on('#poseSeg', 'click', (e) => { const b = e.target.closest('button'); if (b) this.setPose(b.dataset.pose); });
     on('#autoCamoBtn', 'click', () => this.autoCamo());
     on('#colorInput', 'input', (e) => { this.draft.color = e.target.value; this.draft.patch = null; this.applyDraftCamo(); });
@@ -799,7 +883,7 @@ class ARSession {
 
     // Taps on the transparent overlay area = interact with the scene.
     const overlay = $('#arOverlay');
-    const isUI = (t) => t.closest('button, input, label, select, .card, .tools, .seg, .hud');
+    const isUI = (t) => t.closest('button, input, label, select, .card, .tools, .seg, .hud, .pads, .fire');
     const down = (e) => {
       if (isUI(e.target)) return;
       e.preventDefault();
@@ -827,7 +911,7 @@ class ARSession {
       if (this.role === 'hider' && !this.locked) {
         if (this.tool === 'camo') this.sampleAt(p.nx, p.ny);
         else this.placeAtReticle();
-      } else if (this.role === 'seeker' && state.room && state.room.phase === 'seek') this.tapSeek(p.nx, p.ny);
+      } else if (this.role === 'seeker' && state.room && state.room.phase === 'seek') this.fireAt(p.nx, p.ny);
     };
     on('#arOverlay', 'pointerdown', down); on('#arOverlay', 'pointermove', move); on('#arOverlay', 'pointerup', up); on('#arOverlay', 'pointercancel', up);
     overlay.addEventListener('contextmenu', (e) => e.preventDefault());

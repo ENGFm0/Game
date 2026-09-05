@@ -153,9 +153,12 @@
         <button class="btn btn--sm" id="placeBtn">Place here</button>
         <button class="btn btn--sm" id="rotLeft" title="Turn left">↺</button>
         <button class="btn btn--sm" id="rotRight" title="Turn right">↻</button>
-        <button class="btn btn--sm" id="liftUp" title="Raise">▲</button>
-        <button class="btn btn--sm" id="liftDown" title="Lower">▼</button>
         <label class="slider">Size <input id="scaleRange" type="range" min="0.3" max="1.6" step="0.05" value="1"></label>
+      </div>
+      <!-- Joystick (forward/back/left/right) + vertical lift bar (up/down); shown once the avatar is placed -->
+      <div class="pads" id="pads" hidden>
+        <div class="joy" id="joy"><div class="joy__knob" id="joyKnob"></div><span class="joy__label">move</span></div>
+        <div class="liftbar" id="liftBar"><span>▲</span><div class="liftbar__knob" id="liftKnob"></div><span>▼</span></div>
       </div>
       <div class="tools__row tools__row--scroll" id="poseRow">
         <div class="seg seg--dark seg--poses" id="poseSeg"></div>
@@ -179,9 +182,11 @@
     </div>
 
     <!-- Seeker HUD -->
+    <div class="crosshair" id="crosshair" hidden></div>
+    <button class="fire" id="fireBtn" hidden aria-label="Fire"><span>🔫</span><small>FIRE</small></button>
     <div class="seeker-bar" id="seekerBar" hidden>
       <span id="seekerCount">0 / 0 found</span>
-      <span class="hint">Tap an avatar you spot</span>
+      <span class="hint">Aim and FIRE, or tap where you see one</span>
     </div>
 
     <div class="flash" id="flash" hidden></div>
