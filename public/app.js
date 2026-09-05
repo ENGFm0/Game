@@ -615,6 +615,8 @@ class ARSession {
     vibrate(40);
     if (this.role !== 'hider') this.syncAvatars(state.room);
     this.updateOverlay();
+    // Hiders: the avatar is anchored in the room right away (2 m ahead); the joystick moves it from there.
+    if (this.role === 'hider' && !this.locked) this.placeAtReticle();
   }
   worldToRoom(pos, yaw) { return { position: pos.clone().applyMatrix4(this.originInv).toArray(), rotationY: yaw - this.originYaw() }; }
   roomToWorld(arr, yaw) { return { position: new THREE.Vector3().fromArray(arr).applyMatrix4(this.origin), rotationY: yaw + this.originYaw() }; }
@@ -642,7 +644,7 @@ class ARSession {
     this.myAvatar.position.y += this.draft.lift;
     this.draft.placed = true;
     $('#readyBtn').disabled = false; $('#pads').hidden = false;
-    $('#toolHint').innerHTML = 'Placed. Use the <b>joystick</b> to move it, the bar to raise/lower, ↺ ↻ to turn, pick a pose, then <b>Camouflage</b>.';
+    $('#toolHint').innerHTML = 'Anchored in the room. Use the <b>joystick</b> to move it, the bar to raise/lower, ↺ ↻ to turn, pick a pose, then <b>Camouflage</b>.';
     vibrate(30);
   }
   rotate(delta) { this.draft.rotationY += delta; if (this.draft.placed) this.myAvatar.rotation.y += delta; }
@@ -840,7 +842,7 @@ class ARSession {
     $('#pads').hidden = !(tool === 'place' && this.draft.placed && !this.locked);
     $('#camoRow').hidden = tool !== 'camo';
     $('#toolHint').innerHTML = tool === 'place'
-      ? (this.draft.placed ? 'Placed. Use the <b>joystick</b> to move it, the bar to raise/lower, ↺ ↻ to turn, pick a pose, then <b>Camouflage</b>.' : this.mode === 'xr' ? 'Aim at the floor or a surface, then tap <b>Place here</b>.' : 'Turn to face your hiding spot, then tap <b>Place here</b> (2 m ahead).')
+      ? (this.draft.placed ? 'Anchored in the room. Use the <b>joystick</b> to move it, the bar to raise/lower, ↺ ↻ to turn, pick a pose, then <b>Camouflage</b>.' : 'Tap <b>Bring here</b> to put the avatar 2 m in front of you.')
       : 'Tap <b>Auto camouflage</b> to copy what is behind the avatar, or tap anywhere to sample that spot.';
   }
   bindUI() {
