@@ -150,11 +150,17 @@
       <p class="tools__hint" id="toolHint">Aim at the floor or a surface, then tap <b>Place here</b>.</p>
       <div class="tools__row" id="placeRow">
         <button class="btn btn--sm" id="placeBtn">Place here</button>
-        <button class="btn btn--sm" id="rotLeft">↺</button>
-        <button class="btn btn--sm" id="rotRight">↻</button>
+        <button class="btn btn--sm" id="rotLeft" title="Turn left">↺</button>
+        <button class="btn btn--sm" id="rotRight" title="Turn right">↻</button>
+        <button class="btn btn--sm" id="liftUp" title="Raise">▲</button>
+        <button class="btn btn--sm" id="liftDown" title="Lower">▼</button>
         <label class="slider">Size <input id="scaleRange" type="range" min="0.3" max="1.6" step="0.05" value="1"></label>
       </div>
+      <div class="tools__row tools__row--scroll" id="poseRow">
+        <div class="seg seg--dark seg--poses" id="poseSeg"></div>
+      </div>
       <div class="tools__row" id="camoRow" hidden>
+        <button class="btn btn--sm btn--primary" id="autoCamoBtn">✨ Auto camouflage</button>
         <label class="swatch">Color <input id="colorInput" type="color" value="#8a8a8a"></label>
         <label class="check"><input id="textureToggle" type="checkbox" checked> Use captured texture</label>
         <div class="patch" id="patchPreview" title="Captured texture"></div>

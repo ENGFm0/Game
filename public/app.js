@@ -220,34 +220,78 @@ setInterval(() => {
 /* ═══════════════════════════ avatar ═══════════════════════════ */
 const texLoader = new THREE.TextureLoader();
 
-/** Simple mannequin: head, torso, arms, legs. Feet at y=0, ~1.7 m tall. */
+/**
+ * Jointed mannequin (feet at y=0, ~1.7 m tall). Every limb pivots at its joint so poses can be applied.
+ * The material is unlit on purpose: a camouflaged avatar must show *exactly* the sampled colour,
+ * not a shaded version of it.
+ */
 function buildAvatar(playerId) {
-  const material = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 1, metalness: 0 });
+  const material = new THREE.MeshBasicMaterial({ color: 0x8a8a8a });
+  const mesh = (geo, y) => { const m = new THREE.Mesh(geo, material); m.position.y = y; return m; };
+  const joint = (parent, x, y, z) => { const j = new THREE.Group(); j.position.set(x, y, z); parent.add(j); return j; };
+
   const g = new THREE.Group();
-  const add = (geo, x, y, z) => { const m = new THREE.Mesh(geo, material); m.position.set(x, y, z); g.add(m); return m; };
-  add(new THREE.SphereGeometry(0.12, 24, 18), 0, 1.58, 0);                      // head
-  add(new THREE.CapsuleGeometry(0.17, 0.42, 6, 16), 0, 1.12, 0);                // torso
-  add(new THREE.CapsuleGeometry(0.055, 0.52, 4, 12), -0.25, 1.1, 0);            // arms
-  add(new THREE.CapsuleGeometry(0.055, 0.52, 4, 12), 0.25, 1.1, 0);
-  add(new THREE.CapsuleGeometry(0.08, 0.62, 4, 12), -0.1, 0.42, 0);             // legs
-  add(new THREE.CapsuleGeometry(0.08, 0.62, 4, 12), 0.1, 0.42, 0);
+  const hips = joint(g, 0, 0.85, 0);
+  hips.add(mesh(new THREE.CapsuleGeometry(0.17, 0.42, 6, 16), 0.27));          // torso  (centre 1.12)
+  const head = joint(hips, 0, 0.62, 0);
+  head.add(mesh(new THREE.SphereGeometry(0.12, 24, 18), 0.11));                 // head   (centre 1.58)
+  const arm = (side) => {
+    const upper = joint(hips, side * 0.25, 0.5, 0);                             // shoulder (1.35)
+    upper.add(mesh(new THREE.CapsuleGeometry(0.055, 0.22, 4, 12), -0.14));
+    const fore = joint(upper, 0, -0.28, 0);                                     // elbow
+    fore.add(mesh(new THREE.CapsuleGeometry(0.05, 0.22, 4, 12), -0.14));
+    return { upper, fore };
+  };
+  const leg = (side) => {
+    const thigh = joint(hips, side * 0.1, 0, 0);                                // hip
+    thigh.add(mesh(new THREE.CapsuleGeometry(0.08, 0.3, 4, 12), -0.2));
+    const shin = joint(thigh, 0, -0.42, 0);                                     // knee
+    shin.add(mesh(new THREE.CapsuleGeometry(0.07, 0.3, 4, 12), -0.2));
+    return { thigh, shin };
+  };
+  const l = { arm: arm(-1), leg: leg(-1) }, r = { arm: arm(1), leg: leg(1) };
   // Invisible, generous hit volume so seekers can tap it easily.
-  const hit = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.9, 4, 10), new THREE.MeshBasicMaterial({ visible: false }));
+  const hit = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 0.9, 4, 10), new THREE.MeshBasicMaterial({ visible: false }));
   hit.position.y = 0.9; hit.name = 'hit'; g.add(hit);
-  g.userData = { playerId, material, hit, found: false };
+  g.userData = { playerId, material, hit, found: false, pose: 'stand',
+    joints: { hips, head, lArm: l.arm.upper, lFore: l.arm.fore, rArm: r.arm.upper, rFore: r.arm.fore, lThigh: l.leg.thigh, lShin: l.leg.shin, rThigh: r.leg.thigh, rShin: r.leg.shin } };
+  applyPose(g, 'stand');
   return g;
+}
+
+/** Joint rotations per pose (radians, [x, y, z]); hipsY lifts/lowers the whole body; hipsRot tips it over. */
+const POSES = {
+  stand:   { label: '🧍 Stand' },
+  handsUp: { label: '🙌 Hands up', lArm: [0, 0, -2.6], rArm: [0, 0, 2.6] },
+  tpose:   { label: '🤸 T-pose', lArm: [0, 0, -1.57], rArm: [0, 0, 1.57] },
+  crouch:  { label: '🧎 Crouch', hipsY: 0.5, lThigh: [-1.4, 0, 0], rThigh: [-1.4, 0, 0], lShin: [1.4, 0, 0], rShin: [1.4, 0, 0], lArm: [-0.7, 0, -0.2], rArm: [-0.7, 0, 0.2], lFore: [-0.6, 0, 0], rFore: [-0.6, 0, 0] },
+  sit:     { label: '🪑 Sit', hipsY: 0.12, lThigh: [-1.57, 0, -0.15], rThigh: [-1.57, 0, 0.15], lArm: [-0.9, 0, -0.1], rArm: [-0.9, 0, 0.1] },
+  lie:     { label: '🛌 Lie down', hipsY: 0.2, hipsRot: [-1.57, 0, 0], lArm: [0, 0, -0.4], rArm: [0, 0, 0.4], head: [0.3, 0, 0] },
+  wave:    { label: '👋 Wave', rArm: [0, 0, 2.9], rFore: [0, 0, -0.5], lArm: [-0.3, 0, -0.15], head: [0, 0, 0.15] },
+};
+const POSE_NAMES = Object.keys(POSES);
+
+function applyPose(avatar, name) {
+  const pose = POSES[name] || POSES.stand;
+  const j = avatar.userData.joints;
+  for (const k of Object.keys(j)) j[k].rotation.set(0, 0, 0);
+  j.hips.position.y = pose.hipsY !== undefined ? pose.hipsY : 0.85;
+  if (pose.hipsRot) j.hips.rotation.set(...pose.hipsRot);
+  for (const k of Object.keys(j)) if (k !== 'hips' && pose[k]) j[k].rotation.set(...pose[k]);
+  avatar.userData.pose = POSES[name] ? name : 'stand';
+  // keep the tap volume around the body whatever the pose
+  avatar.userData.hit.position.y = pose.hipsRot ? 0.25 : (pose.hipsY !== undefined ? pose.hipsY * 0.5 + 0.35 : 0.9);
 }
 
 function applyCamo(avatar, { color, texture }) {
   const mat = avatar.userData.material;
   if (mat.map) { mat.map.dispose(); mat.map = null; }
+  mat.color.set(color || '#8a8a8a'); mat.needsUpdate = true;
   if (texture) {
     texLoader.load(texture, (tex) => {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(2.5, 2.5); tex.colorSpace = THREE.SRGBColorSpace;
       mat.map = tex; mat.color.set('#ffffff'); mat.needsUpdate = true;
     });
-  } else {
-    mat.color.set(color || '#8a8a8a'); mat.needsUpdate = true;
   }
 }
 
@@ -342,7 +386,7 @@ class ARSession {
     this.origin = new THREE.Matrix4(); this.originInv = new THREE.Matrix4();
     this.calibrated = false;
     this.pendingSample = null;
-    this.draft = { placed: false, color: '#8a8a8a', patch: null, useTexture: true, scale: 1, rotationY: 0 };
+    this.draft = { placed: false, color: '#8a8a8a', patch: null, useTexture: true, scale: 1, rotationY: 0, pose: 'stand', lift: 0 };
     this.locked = false;
     this.orientation = { alpha: 0, beta: 0, gamma: 0, has: false };
     this.hitMatrix = null;
@@ -533,13 +577,56 @@ class ARSession {
       this.myAvatar.scale.setScalar(this.draft.scale);
       this.myAvatar.visible = true;
     } else this.placeAhead(this.mode === 'xr' ? 1.5 : 2);
+    this.myAvatar.position.y += this.draft.lift;
     this.draft.placed = true;
     $('#readyBtn').disabled = false;
-    $('#toolHint').innerHTML = 'Placed. Move it again, resize, then switch to <b>Camouflage</b> and tap the background behind it.';
+    $('#toolHint').innerHTML = 'Placed. <b>Drag</b> to slide it, ↺ ↻ to turn, ▲ ▼ for height, pick a pose, then <b>Camouflage</b>.';
     vibrate(30);
   }
   rotate(delta) { this.draft.rotationY += delta; if (this.draft.placed) this.myAvatar.rotation.y += delta; }
   setScale(s) { this.draft.scale = s; if (this.myAvatar) this.myAvatar.scale.setScalar(s); }
+  setPose(name) {
+    this.draft.pose = name;
+    applyPose(this.myAvatar, name);
+    $$('#poseSeg button').forEach((b) => b.classList.toggle('is-active', b.dataset.pose === name));
+  }
+  lift(delta) {
+    if (!this.draft.placed) return;
+    this.draft.lift = clamp(this.draft.lift + delta, -1, 1.5);
+    this.myAvatar.position.y += delta;
+    toast(`Height ${this.draft.lift >= 0 ? '+' : ''}${this.draft.lift.toFixed(1)} m`, 800);
+  }
+  /** Drag: slide the placed avatar across the floor, relative to the finger movement (works even when the floor is off-screen). */
+  dragBy(dxPx, dyPx) {
+    if (!this.draft.placed) return;
+    const { position: cam, yaw } = this.cameraPose();
+    const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const dist = Math.max(1, this.myAvatar.position.distanceTo(cam));
+    const k = dist * 0.0028;                      // metres per pixel, scaled by distance so far objects still move
+    this.myAvatar.position.addScaledVector(right, dxPx * k).addScaledVector(fwd, -dyPx * k);
+  }
+  /** Auto camouflage: sample the live camera behind the avatar's own body (head, chest, hips). */
+  async autoCamo() {
+    if (!this.draft.placed) { toast('Place the avatar first'); return; }
+    const pts = [1.5, 1.1, 0.7].map((y) => {
+      const v = new THREE.Vector3(0, y * this.draft.scale, 0).applyMatrix4(this.myAvatar.matrixWorld);
+      v.project(this.camera);
+      return { nx: (v.x + 1) / 2, ny: (1 - v.y) / 2, ok: v.z < 1 && v.x > -1 && v.x < 1 && v.y > -1 && v.y < 1 };
+    }).filter((p) => p.ok);
+    if (!pts.length) { toast('Point the camera at your avatar first'); return; }
+    this.myAvatar.visible = false;               // never sample our own pixels (fallback mode reads the video only, but XR reads the composed camera)
+    const results = [];
+    for (const p of pts) { const r = await this.sampleRaw(p.nx, p.ny); if (r) results.push(r); }
+    this.myAvatar.visible = true;
+    if (!results.length) { toast('Could not read the camera image — try the eyedropper.'); return; }
+    const avg = [0, 1, 2].map((i) => Math.round(results.reduce((a, r) => a + parseInt(r.color.slice(1 + i * 2, 3 + i * 2), 16), 0) / results.length));
+    this.draft.color = '#' + avg.map((v) => v.toString(16).padStart(2, '0')).join('');
+    this.draft.patch = results[Math.floor(results.length / 2)].patch;
+    this.applyDraftCamo();
+    vibrate(20);
+    toast(`Camouflaged as ${this.draft.color}`, 1500);
+  }
   applyDraftCamo() {
     const useTex = this.draft.useTexture && this.draft.patch;
     applyCamo(this.myAvatar, { color: this.draft.color, texture: useTex ? this.draft.patch : null });
@@ -547,11 +634,21 @@ class ARSession {
     $('#patchPreview').style.backgroundImage = this.draft.patch ? `url(${this.draft.patch})` : 'none';
   }
 
-  /** Eyedropper: sample the live camera at normalized screen coords. */
+  /** Eyedropper: sample the live camera at normalized screen coords and apply it. */
   async sampleAt(nx, ny) {
+    if (this.mode === 'xr' && !this.cameraAccess) { toast('Live color sampling is not supported here — pick a color with the wheel.', 3500); return; }
+    const result = await this.sampleRaw(nx, ny);
+    if (!result) { toast('Could not read the camera image — try again.'); return; }
+    this.draft.color = result.color; this.draft.patch = result.patch;
+    this.applyDraftCamo();
+    vibrate(20);
+    toast(`Sampled ${result.color}`, 1200);
+  }
+  /** Reads colour + texture patch from the live camera at normalized coords; null if unavailable. */
+  async sampleRaw(nx, ny) {
     let result = null;
     if (this.mode === 'xr') {
-      if (!this.cameraAccess) { toast('Live color sampling is not supported here — pick a color with the wheel.', 3500); return; }
+      if (!this.cameraAccess) return null;
       result = await new Promise((resolve) => { this.pendingSample = { nx, ny, resolve }; });
     } else {
       const v = this.video, c = this.videoCanvas;
@@ -567,18 +664,14 @@ class ARSession {
       const pixels = ctx.getImageData(0, 0, c.width, c.height).data;
       result = samplePixels({ pixels, width: c.width, height: c.height, flipY: false }, fx, fy);
     }
-    if (!result) { toast('Could not read the camera image — try again.'); return; }
-    this.draft.color = result.color; this.draft.patch = result.patch;
-    this.applyDraftCamo();
-    vibrate(20);
-    toast(`Sampled ${result.color}`, 1200);
+    return result;
   }
 
   lock() {
     if (!this.draft.placed) return;
     const { position, rotationY } = this.worldToRoom(this.myAvatar.position, this.myAvatar.rotation.y);
     const useTex = this.draft.useTexture && this.draft.patch;
-    net.emit('hider:ready', { position, rotationY, scale: this.draft.scale, color: this.draft.color, texture: useTex ? this.draft.patch : null, mode: this.mode });
+    net.emit('hider:ready', { position, rotationY, scale: this.draft.scale, color: this.draft.color, texture: useTex ? this.draft.patch : null, pose: this.draft.pose, mode: this.mode });
     this.locked = true; this.reticle.visible = false;
     this.updateOverlay();
   }
@@ -593,7 +686,7 @@ class ARSession {
       let av = this.avatars.get(p.id);
       if (!av) {
         av = buildAvatar(p.id); this.avatars.set(p.id, av); this.scene.add(av);
-        applyCamo(av, p.hidden);
+        applyCamo(av, p.hidden); applyPose(av, p.hidden.pose);
         const { position, rotationY } = this.roomToWorld(p.hidden.position, p.hidden.rotationY);
         av.position.copy(position); av.rotation.set(0, rotationY, 0); av.scale.setScalar(p.hidden.scale || 1);
       }
@@ -606,7 +699,7 @@ class ARSession {
     const av = this.avatars.get(playerId);
     if (av && !av.userData.found) {
       av.userData.found = true;
-      av.userData.material.map = null; av.userData.material.color.set('#f59e0b'); av.userData.material.emissive = new THREE.Color('#7c2d12'); av.userData.material.needsUpdate = true;
+      av.userData.material.map = null; av.userData.material.color.set('#f59e0b'); av.userData.material.needsUpdate = true;
       av.add(makeLabel('FOUND!'));
     }
     if (this.role === 'hider' && playerId === state.id) { $('#hiderLockedText').textContent = `You were found${seekerName ? ' by ' + seekerName : ''}! 😱`; }
@@ -665,8 +758,8 @@ class ARSession {
     $('#placeRow').hidden = tool !== 'place';
     $('#camoRow').hidden = tool !== 'camo';
     $('#toolHint').innerHTML = tool === 'place'
-      ? (this.mode === 'xr' ? 'Aim at the floor or a surface, then tap <b>Place here</b>.' : 'Turn to face your hiding spot, then tap <b>Place here</b> (2 m ahead).')
-      : 'Tap the wall or furniture <b>behind your avatar</b> to copy its color and texture.';
+      ? (this.draft.placed ? 'Placed. <b>Drag</b> to slide it, ↺ ↻ to turn, ▲ ▼ for height, pick a pose, then <b>Camouflage</b>.' : this.mode === 'xr' ? 'Aim at the floor or a surface, then tap <b>Place here</b>.' : 'Turn to face your hiding spot, then tap <b>Place here</b> (2 m ahead).')
+      : 'Tap <b>Auto camouflage</b> to copy what is behind the avatar, or tap anywhere to sample that spot.';
   }
   bindUI() {
     this.handlers = [];
@@ -678,6 +771,10 @@ class ARSession {
     on('#rotLeft', 'click', () => this.rotate(Math.PI / 8));
     on('#rotRight', 'click', () => this.rotate(-Math.PI / 8));
     on('#scaleRange', 'input', (e) => this.setScale(parseFloat(e.target.value)));
+    on('#liftUp', 'click', () => this.lift(0.25));
+    on('#liftDown', 'click', () => this.lift(-0.25));
+    on('#poseSeg', 'click', (e) => { const b = e.target.closest('button'); if (b) this.setPose(b.dataset.pose); });
+    on('#autoCamoBtn', 'click', () => this.autoCamo());
     on('#colorInput', 'input', (e) => { this.draft.color = e.target.value; this.draft.patch = null; this.applyDraftCamo(); });
     on('#textureToggle', 'change', (e) => { this.draft.useTexture = e.target.checked; this.applyDraftCamo(); });
     on('#readyBtn', 'click', () => this.lock());
@@ -696,6 +793,11 @@ class ARSession {
     const move = (e) => {
       if (!this.pointer) return;
       if (Math.hypot(e.clientX - this.pointer.x, e.clientY - this.pointer.y) > 8) this.pointer.moved = true;
+      if (this.pointer.moved && this.role === 'hider' && !this.locked && this.tool === 'place' && this.draft.placed && this.calibrated) {
+        this.dragBy(e.clientX - (this.pointer.lx ?? e.clientX), e.clientY - (this.pointer.ly ?? e.clientY));
+        this.pointer.lx = e.clientX; this.pointer.ly = e.clientY;
+        return;
+      }
       if (this.drag && this.drag.active) {
         this.drag.yaw -= (e.clientX - this.drag.x) * 0.005; this.drag.pitch = clamp(this.drag.pitch - (e.clientY - this.drag.y) * 0.005, -1.2, 1.2);
         this.drag.x = e.clientX; this.drag.y = e.clientY;
@@ -716,6 +818,9 @@ class ARSession {
   unbindUI() { (this.handlers || []).forEach(([el, ev, fn]) => el.removeEventListener(ev, fn)); this.handlers = []; }
 }
 
+/* pose picker buttons */
+$('#poseSeg').innerHTML = POSE_NAMES.map((k) => `<button type="button" data-pose="${k}"${k === 'stand' ? ' class="is-active"' : ''}>${POSES[k].label}</button>`).join('');
+
 /* ═══════════════════════════ entry ═══════════════════════════ */
 async function enterAR(role) {
   if (state.ar) return;
@@ -723,8 +828,12 @@ async function enterAR(role) {
   // reset overlay widgets
   $('#readyBtn').disabled = true; $('#scaleRange').value = 1; $('#colorInput').value = '#8a8a8a'; $('#textureToggle').checked = true; $('#patchPreview').style.backgroundImage = 'none';
   $('#hiderLockedText').textContent = 'Waiting for the other hiders…';
+  $$('#poseSeg button').forEach((b) => b.classList.toggle('is-active', b.dataset.pose === 'stand'));
   const ar = new ARSession(role);
   state.ar = ar;
   try { await ar.start(); }
   catch (e) { console.error(e); toast(e.message || 'Could not start AR', 4000); ar.stop(); }
 }
+
+/* Debug handle (inspect from the console on a phone via remote devtools). */
+window.meccha = { state, POSES };

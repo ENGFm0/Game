@@ -55,6 +55,10 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .seg button.is-active { background: var(--accent); color: #04120a; }
 .seg--dark { width: auto; background: rgba(0,0,0,.55); backdrop-filter: blur(8px); border-color: rgba(255,255,255,.15); }
 .seg--dark button { color: #fff; }
+.tools__row--scroll { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.tools__row--scroll::-webkit-scrollbar { display: none; }
+.seg--poses { flex-wrap: nowrap; }
+.seg--poses button { white-space: nowrap; padding: 6px 10px; font-size: .8rem; }
 
 /* Room */
 .room-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }

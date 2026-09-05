@@ -15,6 +15,7 @@
   const ROLE = { HIDER: 'hider', SEEKER: 'seeker' };
   const LIMITS = { hideSeconds: [20, 600], seekSeconds: [20, 900], maxPlayers: 12, textureBytes: 120 * 1024 };
   const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const POSES = ['stand', 'handsUp', 'tpose', 'crouch', 'sit', 'lie', 'wave'];
 
   function makeCode(taken) {
     let code;
@@ -39,7 +40,8 @@
     let texture = null;
     if (typeof h.texture === 'string' && /^data:image\/(jpeg|png|webp);base64,[a-z0-9+/=]+$/i.test(h.texture) && h.texture.length <= LIMITS.textureBytes) texture = h.texture;
     const mode = h.mode === 'xr' ? 'xr' : 'fallback';
-    return { position: pos, rotationY, scale, color, texture, mode, lockedAt: Date.now() };
+    const pose = POSES.includes(h.pose) ? h.pose : 'stand';
+    return { position: pos, rotationY, scale, color, texture, pose, mode, lockedAt: Date.now() };
   }
 
   /**
@@ -144,6 +146,7 @@
             rotationY: Math.random() * Math.PI * 2,
             scale: 0.7 + Math.random() * 0.3,
             color: palette[Math.floor(Math.random() * palette.length)],
+            pose: POSES[Math.floor(Math.random() * POSES.length)],
             mode: 'xr',
           });
         });
@@ -267,5 +270,5 @@
     }
   }
 
-  return { GameRoom, PHASE, ROLE, LIMITS, makeCode, cleanName, sanitizeHidden };
+  return { GameRoom, PHASE, ROLE, LIMITS, POSES, makeCode, cleanName, sanitizeHidden };
 });
