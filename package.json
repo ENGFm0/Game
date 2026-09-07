@@ -1,26 +1,35 @@
 {
-  "name": "meccha-webar-hide-and-seek",
+  "name": "mimic-party",
   "version": "1.0.0",
-  "description": "WebAR multiplayer hide & seek (camouflage) \u2014 Node.js, Express, Socket.io, Three.js, WebXR",
-  "main": "server.js",
+  "private": true,
+  "type": "module",
+  "description": "Mimic Party — a mobile web voice party game: everyone mimics a sound at once, pitch + rhythm are scored.",
   "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "start": "node server.js",
-    "dev": "node server.js",
     "certs": "mkdir -p certs && openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/key.pem -out certs/cert.pem -days 365 -subj '/CN=localhost'",
-    "test": "node test/flow.test.js && node test/bots.test.js"
+    "test": "node test/core.test.js && node test/scoring.test.js"
   },
-  "engines": {
-    "node": ">=18"
-  },
+  "engines": { "node": ">=18" },
   "dependencies": {
     "express": "^4.19.2",
     "socket.io": "^4.7.5"
   },
   "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
     "peer": "^1.0.2",
     "peerjs": "^1.5.4",
+    "postcss": "^8.4.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "socket.io-client": "^4.7.5",
-    "three": "^0.160.0"
-  },
-  "license": "MIT"
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.1"
+  }
 }
