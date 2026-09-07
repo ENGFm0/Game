@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body {
+  @apply font-display bg-party-ink text-white antialiased;
+  background-image: radial-gradient(900px 500px at 10% -10%, rgba(255, 79, 163, .35), transparent 60%), radial-gradient(700px 500px at 110% 110%, rgba(63, 169, 255, .3), transparent 60%);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+button { -webkit-user-select: none; user-select: none; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-4 text-lg font-bold shadow-lg transition active:scale-95 disabled:opacity-40 disabled:active:scale-100; }
+  .btn-primary { @apply btn bg-party-yellow text-party-ink shadow-yellow-500/30; }
+  .btn-pink { @apply btn bg-party-pink text-white shadow-pink-500/30; }
+  .btn-mint { @apply btn bg-party-mint text-party-ink shadow-emerald-500/30; }
+  .btn-ghost { @apply btn bg-white/10 text-white shadow-none border border-white/15; }
+  .card { @apply rounded-3xl bg-white/10 backdrop-blur-md border border-white/15 p-5 shadow-xl; }
+  .input { @apply w-full rounded-2xl bg-white/10 border border-white/20 px-4 py-4 text-lg placeholder-white/40 outline-none focus:border-party-yellow; }
+  .pill { @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold; }
+}
