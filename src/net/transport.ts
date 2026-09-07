@@ -132,7 +132,8 @@ function peerNet(): Net {
       else fail('Connection problem: ' + e?.type);
     });
     peer.on('disconnected', () => peer && peer.reconnect());
-    const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
+    // binary serialisation: PeerJS chunks large messages (round results carry every recording)
+    const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'binary' });
     hostConn = conn;
     let joined = false;
     conn.on('open', () => conn.send({ t: 'join', payload }));
