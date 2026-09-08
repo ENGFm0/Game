@@ -40,7 +40,7 @@ const io = new Server(server, { cors: { origin: '*' }, maxHttpBufferSize: 2e6, p
 
 /** @type {Map<string, GameRoom>} */
 const rooms = new Map();
-const ACTIONS = ['time:ping', 'player:name', 'player:ready', 'room:settings', 'round:start', 'round:submit', 'game:end', 'game:reset'];
+const ACTIONS = ['time:ping', 'player:name', 'player:ready', 'room:settings', 'round:start', 'round:submit', 'game:end', 'game:reset', 'room:addSound', 'room:removeSound', 'room:builtIn'];
 
 function createRoom(hostId) {
   const code = makeCode((c) => rooms.has(c));

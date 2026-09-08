@@ -9,12 +9,13 @@ import FinalScreen from './screens/FinalScreen';
 
 export interface Player { id: string; name: string; avatar: string; ready: boolean; total: number; submitted: boolean; lastScore: number | null }
 export interface RoundInfo { n: number; of: number; soundId: string; listenAt: number; recordAt: number; recordEndAt: number; submitDeadline: number; results: any[] | null }
-export interface Room { code: string; hostId: string; phase: 'lobby' | 'listen' | 'record' | 'results' | 'final'; settings: { rounds: number; countdownMs: number }; serverNow: number; players: Player[]; round: RoundInfo | null; standings: any[] }
+export interface Room { code: string; hostId: string; phase: 'lobby' | 'listen' | 'record' | 'results' | 'final'; settings: { rounds: number; countdownMs: number }; serverNow: number; players: Player[]; round: RoundInfo | null; standings: any[]; sounds?: { builtIn: boolean; custom: { id: string; name: string; durationMs: number }[] } }
 
 export interface Ctx {
   net: Net; room: Room; myId: string; isHost: boolean; hostNow: () => number;
   recorder: MimicRecorder; micReady: boolean; setMicReady: (v: boolean) => void;
   roundResults: any | null; toast: (m: string, ms?: number) => void;
+  roundSound: any | null;             // custom sound definition (with audio) for the current round, if any
 }
 
 const recorder = new MimicRecorder();
@@ -26,6 +27,7 @@ export default function App() {
   const [myId, setMyId] = useState('');
   const [micReady, setMicReady] = useState(false);
   const [roundResults, setRoundResults] = useState<any | null>(null);
+  const [roundSound, setRoundSound] = useState<any | null>(null);
   const [toastMsg, setToastMsg] = useState('');
   const offsetRef = useRef(0);
   const toastTimer = useRef(0);
@@ -43,7 +45,7 @@ export default function App() {
         setInterval(async () => { offsetRef.current = await n.syncClock(); }, 20000);
       });
       n.on('room:state', (r: Room) => { setRoom(r); });
-      n.on('round:start', () => setRoundResults(null));
+      n.on('round:start', (r: any) => { setRoundResults(null); setRoundSound(r && r.sound ? r.sound : null); });
       n.on('round:results', (res: any) => setRoundResults(res));
       n.on('error:msg', ({ message }: any) => toast(message, 4000));
       n.on('room:closed', ({ message }: any) => { toast(message, 5000); setRoom(null); });
@@ -53,7 +55,7 @@ export default function App() {
     return () => { alive = false; };
   }, [toast]);
 
-  const ctx = useMemo<Ctx | null>(() => (net && room && myId ? { net, room, myId, isHost: room.hostId === myId, hostNow, recorder, micReady, setMicReady, roundResults, toast } : null), [net, room, myId, hostNow, micReady, roundResults, toast]);
+  const ctx = useMemo<Ctx | null>(() => (net && room && myId ? { net, room, myId, isHost: room.hostId === myId, hostNow, recorder, micReady, setMicReady, roundResults, roundSound, toast } : null), [net, room, myId, hostNow, micReady, roundResults, roundSound, toast]);
 
   let screen: JSX.Element;
   if (netError) screen = <Center><div className="card text-center">😵 {netError}</div></Center>;

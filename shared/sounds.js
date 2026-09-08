@@ -25,10 +25,26 @@ export const SOUNDS = [
 ];
 
 export const SOUND_IDS = SOUNDS.map((s) => s.id);
-export const soundById = (id) => SOUNDS.find((s) => s.id === id) || SOUNDS[0];
+export const soundById = (id, custom = []) => custom.find((s) => s.id === id) || SOUNDS.find((s) => s.id === id) || SOUNDS[0];
+
+/** Custom sounds (recorded or uploaded by the host) carry their own audio + analysed contour:
+ *  { id, name, emoji, custom: true, durationMs, audio: dataURL, contour: [{t, f}], onsets: [ms] } */
+export const CUSTOM_LIMITS = { maxSounds: 8, maxDurationMs: 4000, audioBytes: 400 * 1024 };
+
+export function sanitizeCustomSound(s) {
+  if (!s || typeof s !== 'object') return null;
+  if (typeof s.audio !== 'string' || !/^data:audio\/[a-z0-9.+-]+(;codecs=[a-z0-9.,+-]+)?;base64,[a-z0-9+/=]+$/i.test(s.audio) || s.audio.length > CUSTOM_LIMITS.audioBytes * 1.4) return null;
+  const durationMs = Math.min(CUSTOM_LIMITS.maxDurationMs, Math.max(300, Math.round(Number(s.durationMs) || 0)));
+  const contour = Array.isArray(s.contour) ? s.contour.slice(0, 400).map((p) => ({ t: Math.max(0, Math.round(Number(p.t) || 0)), f: p.f == null || !Number.isFinite(Number(p.f)) ? null : Math.min(2000, Math.max(50, Number(p.f))) })) : [];
+  if (!contour.some((p) => p.f != null)) return null;
+  const onsets = Array.isArray(s.onsets) ? s.onsets.slice(0, 20).map((v) => Math.max(0, Math.round(Number(v) || 0))) : [0];
+  const name = String(s.name || 'My sound').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 24) || 'My sound';
+  return { id: 'custom-' + Math.random().toString(36).slice(2, 8), name, emoji: '🎵', hint: name, custom: true, durationMs, audio: s.audio, contour, onsets: onsets.length ? onsets : [0] };
+}
 
 /** Length of the sound in milliseconds. */
 export function soundDurationMs(sound) {
+  if (sound.custom) return sound.durationMs;
   return Math.round(Math.max(...sound.notes.map((n) => n.t + n.d)) * 1000);
 }
 
@@ -43,6 +59,18 @@ export function noteFreqAt(note, t) {
 export function referenceContour(sound, stepMs = 20) {
   const out = [];
   const total = soundDurationMs(sound);
+  if (sound.custom) {
+    // resample the analysed contour onto the requested grid (nearest sample within 15 ms)
+    const pts = sound.contour;
+    let j = 0;
+    for (let ms = 0; ms <= total; ms += stepMs) {
+      while (j < pts.length - 1 && pts[j + 1].t <= ms) j++;
+      const p = pts[j], q = pts[j + 1];
+      const near = q && Math.abs(q.t - ms) < Math.abs(p.t - ms) ? q : p;
+      out.push({ t: ms, f: near && Math.abs(near.t - ms) <= 15 ? near.f : null });
+    }
+    return out;
+  }
   for (let ms = 0; ms <= total; ms += stepMs) {
     const t = ms / 1000;
     const note = sound.notes.find((n) => t >= n.t && t < n.t + n.d);
@@ -53,6 +81,7 @@ export function referenceContour(sound, stepMs = 20) {
 
 /** Note onsets in ms. Notes that start exactly where the previous one ends are one continuous sound (no new onset). */
 export function referenceOnsets(sound) {
+  if (sound.custom) return sound.onsets;
   const onsets = [];
   let prevEnd = -1;
   for (const n of sound.notes) {

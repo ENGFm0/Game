@@ -1,36 +1,39 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Ctx } from '../App';
-import { soundById, referenceContour, soundDurationMs } from '../../shared/sounds.js';
-import { audioContext, playSound, blip, referenceFreqAt, SoundDef } from '../audio/synth';
+import { soundById, referenceContour } from '../../shared/sounds.js';
+import { audioContext, playSound, blip, referenceFreqAt, preloadCustom, SoundDef } from '../audio/synth';
 import { hzToSemitone } from '../audio/pitch';
 import { scorePerformance } from '../game/scoring';
 import PitchGraph from '../components/PitchGraph';
+import Stage, { StagePlayer } from '../components/Stage';
 
-type Stage = 'preload' | 'listen' | 'countdown' | 'record' | 'analyzing' | 'waiting';
+type Stage_ = 'preload' | 'listen' | 'countdown' | 'record' | 'analyzing' | 'waiting';
+const WAVE_BARS = 64;
 
 /**
  * One round for one player. All stages are driven by the host-clock timestamps in the round,
  * so every phone plays the sound and starts recording at the same absolute moment.
  */
 export default function RoundScreen({ ctx }: { ctx: Ctx }) {
-  const { net, room, hostNow, recorder, micReady, toast } = ctx;
+  const { net, room, myId, hostNow, recorder, micReady, roundSound, toast } = ctx;
   const round = room.round!;
-  const sound = soundById(round.soundId) as SoundDef;
-  const [stage, setStage] = useState<Stage>('preload');
+  const sound = soundById(round.soundId, roundSound ? [roundSound] : []) as SoundDef;
+  const [stage, setStage] = useState<Stage_>('preload');
   const [count, setCount] = useState(3);
   const [progress, setProgress] = useState(0);
   const [live, setLive] = useState<(number | null)[]>([]);
+  const [wave, setWave] = useState<number[]>(() => new Array(WAVE_BARS).fill(0));
   const [level, setLevel] = useState(0);
+  const [liveScore, setLiveScore] = useState<number | null>(null);
   const [result, setResult] = useState<any>(null);
   const started = useRef(false);
+  const framesRef = useRef<any[]>([]);
 
-  const refContour = useRef<(number | null)[]>([]);
-  useEffect(() => { refContour.current = referenceContour(sound, 40).map((p: any) => (p.f == null ? null : hzToSemitone(p.f))); }, [sound]);
-
-  // Live display: reference (semitones) padded to the record window + the recorded contour folded into the reference octave.
   const recordMs = round.recordEndAt - round.recordAt;
+  const refContour = useRef<(number | null)[]>([]);
   const liveRef = useRef<(number | null)[]>([]);
   useEffect(() => {
+    refContour.current = referenceContour(sound, 40).map((p: any) => (p.f == null ? null : hzToSemitone(p.f)));
     const n = Math.floor(recordMs / 40) + 1;
     liveRef.current = Array.from({ length: n }, (_, i) => { const f = referenceFreqAt(sound, (i * 40) / 1000); return f == null ? null : hzToSemitone(f); });
   }, [sound, recordMs]);
@@ -38,15 +41,15 @@ export default function RoundScreen({ ctx }: { ctx: Ctx }) {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    let timers: number[] = [];
-    let raf = 0;
+    const timers: number[] = [];
+    let raf = 0, scoreTimer = 0;
     const at = (hostTime: number, fn: () => void) => timers.push(window.setTimeout(fn, Math.max(0, hostTime - hostNow())));
 
-    // 1) listen — schedule the reference on the AudioContext clock for sample-accurate start
+    // 1) listen — schedule the reference on the AudioContext clock (custom sounds are decoded first)
     const ctxA = audioContext();
-    const delay = Math.max(0, round.listenAt - hostNow()) / 1000;
-    const durS = soundDurationMs(sound) / 1000;
-    try { playSound(sound, ctxA.currentTime + delay, 0.6); } catch { /* audio locked */ }
+    const durS = (sound.custom ? sound.durationMs! : Math.max(...(sound.notes || []).map((n) => n.t + n.d)) * 1000) / 1000;
+    const schedule = () => { const delay = Math.max(0, round.listenAt - hostNow()) / 1000; try { playSound(sound, ctxA.currentTime + delay, 0.7); } catch { /* audio locked */ } };
+    if (sound.custom) preloadCustom(sound).then(schedule).catch(() => toast('Could not decode the custom sound')); else schedule();
     at(round.listenAt, () => {
       setStage('listen');
       const t0 = performance.now();
@@ -54,26 +57,34 @@ export default function RoundScreen({ ctx }: { ctx: Ctx }) {
       raf = requestAnimationFrame(tick);
     });
 
-    // 2) countdown 3-2-1 (blips)
+    // 2) countdown 3-2-1
     const cd = room.settings.countdownMs || 3000;
     [3, 2, 1].forEach((n) => at(round.recordAt - (n * cd) / 3, () => { setStage('countdown'); setCount(n); blip(n === 1 ? 990 : 660, 90); }));
 
     // 3) record — everyone at recordAt
-    at(round.recordAt, async () => {
+    at(round.recordAt, () => {
       blip(1320, 160, 'square', 0.2);
-      if (!micReady || !recorder.ready) { setStage('record'); toast('Microphone not enabled — you get a zero this round 😬', 4000); }
+      setStage('record');
+      if (!micReady || !recorder.ready) { toast('Microphone not enabled — you get a zero this round 😬', 4000); }
       else {
-        const refMin = Math.min(...liveRef.current.filter((v): v is number => v != null)), refMax = Math.max(...liveRef.current.filter((v): v is number => v != null));
+        const voicedRef = liveRef.current.filter((v): v is number => v != null);
+        const refMin = Math.min(...voicedRef), refMax = Math.max(...voicedRef);
         const pts: (number | null)[] = [];
+        const bars: number[] = new Array(WAVE_BARS).fill(0);
         recorder.onFrame = (fr) => {
           let v: number | null = fr.f == null ? null : hzToSemitone(fr.f);
           if (v != null) { while (v < refMin - 6) v += 12; while (v > refMax + 6) v -= 12; }
-          const i = Math.round(fr.t / 40);
-          pts[i] = v;
-          if (fr.t % 80 < 25) { setLive(pts.slice()); setLevel(Math.min(1, fr.rms * 6)); }
+          pts[Math.round(fr.t / 40)] = v;
+          const bi = Math.min(WAVE_BARS - 1, Math.floor((fr.t / recordMs) * WAVE_BARS));
+          bars[bi] = Math.max(bars[bi], Math.min(1, fr.rms * 5));
+          framesRef.current.push(fr);
+          if (fr.t % 80 < 25) { setLive(pts.slice()); setWave(bars.slice()); setLevel(Math.min(1, fr.rms * 6)); }
         };
         try { recorder.start(); } catch (e: any) { toast(e.message); }
-        setStage('record');
+        // live match estimate every 300 ms (same scorer, partial frames)
+        scoreTimer = window.setInterval(() => {
+          try { const s = scorePerformance(sound, framesRef.current, recordMs); setLiveScore(s.score); } catch { /* ignore */ }
+        }, 300);
       }
       const t0 = performance.now();
       const tick = () => { const p = Math.min(1, (performance.now() - t0) / recordMs); setProgress(p); if (p < 1) raf = requestAnimationFrame(tick); };
@@ -82,6 +93,7 @@ export default function RoundScreen({ ctx }: { ctx: Ctx }) {
 
     // 4) stop, analyse locally, submit
     at(round.recordEndAt, async () => {
+      clearInterval(scoreTimer);
       setStage('analyzing');
       let submission: any = { score: 0, pitch: 0, rhythm: 0, contour: [], audio: null, title: '🫣 Stage Fright' };
       if (micReady && recorder.ready) {
@@ -97,83 +109,46 @@ export default function RoundScreen({ ctx }: { ctx: Ctx }) {
       setStage('waiting');
     });
 
-    return () => { timers.forEach(clearTimeout); cancelAnimationFrame(raf); recorder.onFrame = null; };
+    return () => { timers.forEach(clearTimeout); cancelAnimationFrame(raf); clearInterval(scoreTimer); recorder.onFrame = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submittedCount = room.players.filter((p) => p.submitted).length;
+  const phaseLabel = { preload: 'GET READY', listen: 'LISTEN', countdown: 'GET SET', record: 'RECORDING', analyzing: 'JUDGING', waiting: 'WAITING' }[stage];
+  const players: StagePlayer[] = room.players.map((p) => ({
+    id: p.id, name: p.name, avatar: p.avatar, total: p.total,
+    score: p.id === myId ? (stage === 'record' ? liveScore : result ? result.score : null) : (stage === 'waiting' && p.submitted ? '✓' as any : null),
+    mood: stage === 'record' ? 'sing' : stage === 'listen' ? 'idle' : stage === 'waiting' ? (p.submitted ? 'idle' : 'shy') : 'idle',
+    level: p.id === myId ? level : stage === 'record' ? 0.4 + 0.3 * Math.sin(Date.now() / 150 + p.name.length) : 0,
+  }));
+  const caption = stage === 'listen' ? `👂 ${sound.emoji} ${sound.name} — "${sound.hint}"` : stage === 'countdown' ? `Everyone in… ${count}` : stage === 'record' ? `GO! ${sound.emoji} "${sound.hint}"` : stage === 'analyzing' ? '🧠 Judging your noise…' : stage === 'waiting' ? `Waiting… ${submittedCount}/${room.players.length} done` : '👂 Get ready to listen';
 
   return (
-    <div className="flex-1 flex flex-col gap-4">
-      <div className="flex items-center justify-between text-white/70 text-sm font-bold">
-        <span>Round {round.n} / {round.of}</span>
-        <span className="pill bg-white/10">{sound.emoji} {sound.name}</span>
-      </div>
-
-      {stage === 'preload' && <Big emoji="👂" title="Get ready to listen" sub="The sound plays on every phone at the same time." />}
-
-      {stage === 'listen' && (
-        <div className="card text-center animate-pop">
-          <div className="text-8xl animate-pulse2">{sound.emoji}</div>
-          <h2 className="text-3xl font-extrabold mt-2">Listen… {sound.name}</h2>
-          <p className="text-white/70 mt-1">"{sound.hint}"</p>
-          <Bar value={progress} color="bg-party-yellow" />
-          <PitchGraph reference={refContour.current} contour={[]} height={110} />
-        </div>
-      )}
-
-      {stage === 'countdown' && (
-        <div className="card text-center">
-          <div className="text-white/70 font-bold">Everyone mimics in…</div>
-          <div key={count} className="text-[9rem] leading-none font-extrabold text-party-yellow animate-pop">{count}</div>
-          <div className="text-white/60">"{sound.hint}"</div>
-        </div>
-      )}
+    <div className="flex-1 flex flex-col gap-3">
+      <Stage players={players} roundLabel={`ROUND ${round.n} / ${round.of}`} phaseLabel={phaseLabel} caption={caption} wave={stage === 'record' ? wave : null} progress={stage === 'record' ? progress : null}>
+        {stage === 'countdown' && <div key={count} className="absolute inset-0 grid place-items-center pointer-events-none"><div className="text-[8rem] leading-none font-black text-party-yellow drop-shadow-[0_6px_0_rgba(0,0,0,.4)] animate-pop">{count}</div></div>}
+        {stage === 'listen' && <div className="absolute left-3 right-3 bottom-3 h-2 rounded-full bg-black/40 overflow-hidden"><div className="h-full bg-party-yellow" style={{ width: `${Math.round(progress * 100)}%` }} /></div>}
+      </Stage>
 
       {stage === 'record' && (
-        <div className="card text-center border-party-pink/60 shadow-pink-500/20">
-          <div className="text-6xl animate-pulse2">🎤</div>
-          <h2 className="text-3xl font-extrabold text-party-pink">GO! Mimic it!</h2>
-          <p className="text-white/70">{sound.emoji} "{sound.hint}"</p>
-          <Bar value={progress} color="bg-party-pink" />
-          <div className="mt-3 flex items-center gap-3">
-            <span className="text-xl">🔊</span>
-            <div className="flex-1 h-3 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-gradient-to-r from-party-mint via-party-yellow to-party-pink transition-[width] duration-75" style={{ width: `${Math.round(level * 100)}%` }} /></div>
+        <div className="card !p-3">
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="font-extrabold text-party-pink">🎤 Mimic it now!</span>
+            <span className="font-black text-party-yellow text-xl tabular-nums">{liveScore ?? '–'}<span className="text-xs text-white/50 font-bold"> / 100</span></span>
           </div>
-          <div className="mt-3"><PitchGraph reference={liveRef.current} contour={live} live height={130} /></div>
-          <div className="text-xs text-white/50 mt-2">Yellow = the sound · pink = you</div>
+          <PitchGraph reference={liveRef.current} contour={live} live height={110} />
+          <div className="text-xs text-white/50 mt-1">Yellow = the sound · pink = you · the number is your live match</div>
         </div>
       )}
 
-      {stage === 'analyzing' && <Big emoji="🧠" title="Judging your noise…" sub="Comparing pitch and rhythm on your phone." spin />}
-
-      {stage === 'waiting' && (
-        <div className="card text-center">
-          <div className="text-6xl">{result ? (result.score >= 75 ? '🤩' : result.score >= 45 ? '😄' : '😅') : '🫣'}</div>
-          {result && <>
-            <div className="text-6xl font-extrabold text-party-yellow mt-1">{result.score}</div>
-            <div className="font-bold text-lg">{result.title}</div>
-            <div className="text-white/70 text-sm">Pitch {result.pitch} · Rhythm {result.rhythm}</div>
-            <div className="mt-3"><PitchGraph reference={result.reference} contour={result.contour} height={110} /></div>
-          </>}
-          <p className="text-white/70 mt-3">Waiting for the others… {submittedCount}/{room.players.length} done</p>
-          <ul className="flex flex-wrap justify-center gap-2 mt-2">
-            {room.players.map((p) => <li key={p.id} className={`pill ${p.submitted ? 'bg-party-mint text-party-ink' : 'bg-white/10'}`}>{p.avatar} {p.name}</li>)}
-          </ul>
+      {stage === 'waiting' && result && (
+        <div className="card !p-3 text-center">
+          <div className="text-5xl font-black text-party-yellow">{result.score}</div>
+          <div className="font-bold">{result.title}</div>
+          <div className="text-white/60 text-sm">Pitch {result.pitch} · Rhythm {result.rhythm}</div>
+          <div className="mt-2"><PitchGraph reference={result.reference} contour={result.contour} height={96} /></div>
         </div>
       )}
+      {stage === 'listen' && <div className="card !p-3"><PitchGraph reference={refContour.current} contour={[]} height={90} /></div>}
     </div>
   );
-}
-
-function Big({ emoji, title, sub, spin }: { emoji: string; title: string; sub: string; spin?: boolean }) {
-  return (
-    <div className="card text-center">
-      <div className={`text-7xl ${spin ? 'animate-spin [animation-duration:2.5s]' : 'animate-wiggle'} inline-block`}>{emoji}</div>
-      <h2 className="text-2xl font-extrabold mt-3">{title}</h2>
-      <p className="text-white/70 mt-1">{sub}</p>
-    </div>
-  );
-}
-function Bar({ value, color }: { value: number; color: string }) {
-  return <div className="mt-4 h-3 rounded-full bg-white/10 overflow-hidden"><div className={`h-full ${color}`} style={{ width: `${Math.round(value * 100)}%` }} /></div>;
 }

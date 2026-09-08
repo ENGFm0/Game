@@ -11,7 +11,7 @@
  *   recordEndAt → recordAt + record window (3–5 s)
  *   submitDeadline → recordEndAt + 8 s: results are published even if someone never submits
  */
-import { SOUND_IDS, soundById, soundDurationMs, recordWindowMs } from './sounds.js';
+import { SOUND_IDS, soundById, soundDurationMs, recordWindowMs, sanitizeCustomSound, CUSTOM_LIMITS } from './sounds.js';
 
 export const PHASE = { LOBBY: 'lobby', LISTEN: 'listen', RECORD: 'record', RESULTS: 'results', FINAL: 'final' };
 export const LIMITS = { maxPlayers: 12, audioBytes: 400 * 1024, rounds: [1, 20] };
@@ -56,6 +56,8 @@ export class GameRoom {
     this.settings = { rounds: 5, countdownMs: 3000 };
     this.round = null;          // current round
     this.history = [];          // finished rounds (without audio)
+    this.customSounds = [];     // host-added sounds (with audio)
+    this.useBuiltIn = true;
     this.timers = [];
     this.createdAt = now();
   }
@@ -77,6 +79,7 @@ export class GameRoom {
         results: r.results ? r.results.map(({ audio, ...rest }) => rest) : null,   // audio travels once in round:results
       } : null,
       standings: this.standings(),
+      sounds: { builtIn: this.useBuiltIn, custom: this.customSounds.map(({ audio, contour, ...rest }) => ({ ...rest, bytes: audio.length })) },
     };
   }
 
@@ -112,9 +115,11 @@ export class GameRoom {
   /* ── rounds ── */
   startRound(soundId) {
     const used = new Set(this.history.map((h) => h.soundId));
-    const pool = SOUND_IDS.filter((s) => !used.has(s));
-    const pick = SOUND_IDS.includes(soundId) ? soundId : (pool.length ? pool : SOUND_IDS)[Math.floor(Math.random() * (pool.length ? pool.length : SOUND_IDS.length))];
-    const sound = soundById(pick);
+    const all = [...(this.useBuiltIn || !this.customSounds.length ? SOUND_IDS : []), ...this.customSounds.map((c) => c.id)];
+    const pool = all.filter((s) => !used.has(s));
+    const from = pool.length ? pool : all;
+    const pick = all.includes(soundId) ? soundId : from[Math.floor(Math.random() * from.length)];
+    const sound = soundById(pick, this.customSounds);
     const now = this.now();
     const listenAt = now + 1500;
     const recordAt = listenAt + soundDurationMs(sound) + this.settings.countdownMs;
@@ -123,7 +128,8 @@ export class GameRoom {
     for (const p of this.players.values()) p.lastScore = null;
     this.clearTimers();
     this.phase = PHASE.LISTEN;
-    this.emit('*', 'round:start', { ...this.snapshot().round, serverNow: now });
+    // custom sounds travel with the round so every phone can play and score them
+    this.emit('*', 'round:start', { ...this.snapshot().round, sound: sound.custom ? sound : null, serverNow: now });
     this.broadcast();
     this.later(recordAt - now, () => { if (this.round && !this.round.results) { this.phase = PHASE.RECORD; this.broadcast(); } });
     this.later(this.round.submitDeadline - now, () => { if (this.round && !this.round.results) this.finishRound('deadline'); });
@@ -175,6 +181,20 @@ export class GameRoom {
         if (this.hostId !== id) return { ok: false };
         this.settings.rounds = clamp(Math.round(num(payload.rounds, this.settings.rounds)), LIMITS.rounds[0], LIMITS.rounds[1]);
         this.broadcast(); return { ok: true };
+
+      case 'room:addSound': {
+        if (this.hostId !== id) return { ok: false };
+        if (this.customSounds.length >= CUSTOM_LIMITS.maxSounds) return this.fail(id, `Up to ${CUSTOM_LIMITS.maxSounds} custom sounds per room.`);
+        const snd = sanitizeCustomSound(payload);
+        if (!snd) return this.fail(id, 'That clip has no clear pitch — try a louder, cleaner sound (max 4 s).');
+        this.customSounds.push(snd); this.broadcast(); return { ok: true, id: snd.id };
+      }
+      case 'room:removeSound':
+        if (this.hostId !== id) return { ok: false };
+        this.customSounds = this.customSounds.filter((c) => c.id !== payload.id); this.broadcast(); return { ok: true };
+      case 'room:builtIn':
+        if (this.hostId !== id) return { ok: false };
+        this.useBuiltIn = !!payload.enabled || this.customSounds.length === 0; this.broadcast(); return { ok: true };
 
       case 'round:start':
         if (this.hostId !== id) return this.fail(id, 'Only the host can start a round.');

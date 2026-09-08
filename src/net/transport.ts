@@ -20,7 +20,7 @@ export interface Net {
   syncClock(): Promise<number>;   // resolves the host-clock offset (hostNow - Date.now())
 }
 
-const ACTIONS = ['time:ping', 'player:name', 'player:ready', 'room:settings', 'round:start', 'round:submit', 'game:end', 'game:reset'];
+const ACTIONS = ['time:ping', 'player:name', 'player:ready', 'room:settings', 'round:start', 'round:submit', 'game:end', 'game:reset', 'room:addSound', 'room:removeSound', 'room:builtIn'];
 const PEER_PREFIX = 'mimic-party-';
 
 function emitter() {

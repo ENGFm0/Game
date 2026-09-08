@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Ctx } from '../App';
 import { unlockAudio, blip } from '../audio/synth';
 import { SOUNDS } from '../../shared/sounds.js';
+import SoundManager from '../components/SoundManager';
 
 export default function LobbyScreen({ ctx }: { ctx: Ctx }) {
   const { net, room, myId, isHost, recorder, micReady, setMicReady, toast } = ctx;
@@ -76,6 +77,8 @@ export default function LobbyScreen({ ctx }: { ctx: Ctx }) {
         )}
       </div>
 
+      {isHost && <SoundManager ctx={ctx} />}
+
       {isHost ? (
         <div className="card flex flex-col gap-3">
           <label className="flex items-center justify-between font-bold">Rounds
@@ -84,7 +87,7 @@ export default function LobbyScreen({ ctx }: { ctx: Ctx }) {
             </select>
           </label>
           <button className="btn-primary w-full text-xl" onClick={start} disabled={!allReady}>{allReady ? '🚀 Start the party' : 'Waiting for everyone to be ready…'}</button>
-          <p className="text-xs text-white/50 text-center">{SOUNDS.length} sounds in the bag. Playing alone? Just tap Start.</p>
+          <p className="text-xs text-white/50 text-center">{SOUNDS.length} built-in sounds{room.sounds?.custom.length ? ` + ${room.sounds.custom.length} of yours` : ''}. Playing alone? Just tap Start.</p>
         </div>
       ) : (
         <p className="text-center text-white/60">Waiting for the host to start… ⏳</p>

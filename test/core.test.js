@@ -99,3 +99,33 @@ assert.strictEqual(room.empty, true);
 }
 
 console.log('✔ core test passed');
+
+// custom sounds: host adds one, it joins the pool, travels with round:start, and can be removed
+{
+  const evs = [];
+  const r = new GameRoom({ code: 'SND', hostId: 'h', emit: (t, ev, p) => evs.push({ t, ev, p }) });
+  r.join('h', { name: 'Host' }); r.join('g', { name: 'Guest' });
+  const clip = { name: 'Meow<b>', audio: 'data:audio/wav;base64,UklGRg==', durationMs: 1200, contour: [{ t: 0, f: 400 }, { t: 20, f: 420 }, { t: 40, f: 440 }], onsets: [0] };
+  assert.strictEqual(r.handle('g', 'room:addSound', clip).ok, false, 'guest cannot add sounds');
+  const added = r.handle('h', 'room:addSound', clip);
+  assert.strictEqual(added.ok, true);
+  const snap = [...evs].reverse().find((e) => e.ev === 'room:state').p;
+  assert.deepStrictEqual(snap.sounds.custom.map((c) => c.name), ['Meowb']);
+  assert.strictEqual(snap.sounds.custom[0].audio, undefined, 'snapshot never carries audio');
+  assert.strictEqual(r.handle('h', 'room:addSound', { name: 'silent', audio: 'data:audio/wav;base64,AA==', durationMs: 1000, contour: [{ t: 0, f: null }] }).ok, false, 'clips without pitch are rejected');
+  r.handle('h', 'player:ready', { ready: true }); r.handle('g', 'player:ready', { ready: true });
+  r.handle('h', 'room:builtIn', { enabled: false });
+  r.handle('h', 'round:start');
+  const start = [...evs].reverse().find((e) => e.ev === 'round:start').p;
+  assert.strictEqual(start.soundId, added.id, 'only the custom sound remains in the pool');
+  assert.strictEqual(start.sound.audio, clip.audio, 'custom sound travels with the round');
+  assert.strictEqual(start.recordEndAt - start.recordAt, 3000, 'record window clamps to 3 s');
+  r.handle('h', 'game:reset');
+  r.handle('h', 'room:removeSound', { id: added.id });
+  assert.strictEqual(r.customSounds.length, 0);
+  assert.strictEqual(r.useBuiltIn, false);   // flag stays; startRound falls back to built-ins when no custom sounds remain
+  r.handle('h', 'round:start');
+  assert.ok(!String([...evs].reverse().find((e) => e.ev === 'round:start').p.soundId).startsWith('custom-'));
+  r.dispose();
+  console.log('✔ custom sound test passed');
+}
