@@ -68,7 +68,8 @@ export default function ResultsScreen({ ctx }: { ctx: Ctx }) {
   const sel = results.find((r) => r.id === selected) || results[0];
   const players: StagePlayer[] = room.players.map((p) => {
     const sc = revealed[p.id];
-    return { id: p.id, name: p.name, avatar: p.avatar, total: p.total, score: sc ?? null, speaker: speaker === p.id, mood: speaker === p.id ? 'speak' : sc == null ? 'idle' : sc < LOW ? 'shy' : 'idle' };
+    // before a player's turn the card shows their total from previous rounds; it flips to the round score when revealed
+    return { id: p.id, name: p.name, avatar: p.avatar, total: Math.max(0, p.total - (p.lastScore ?? 0)), score: sc ?? null, speaker: speaker === p.id, mood: speaker === p.id ? 'speak' : sc == null ? 'idle' : sc < LOW ? 'shy' : 'idle' };
   });
 
   return (
